@@ -18,6 +18,8 @@ import SettingsPage from "./components/SettingsPage";
 import EventsPage from "./components/EventsPage";
 import AppSearchSheet from "./components/AppSearchSheet";
 
+import AuthSheet from "./components/AuthSheet";
+
 import Logo from "./assets/afroconnect-logo.png";
 
 import { UserLocationProvider, useUserLocation } from "@/contexts/UserLocationContext";
@@ -32,6 +34,7 @@ const LS_AREA_KEY_PREFIX = "afroconnect.areaId.";
 const LS_PROFILE = "afroconnect.profile";
 const LS_AVATAR_URL = "afroconnect.avatarUrl";
 
+// Custom event so ProfilePage can tell AppHeader to refresh immediately
 export const PROFILE_UPDATED_EVENT = "afroconnect.profileUpdated";
 
 type StoredProfile = {
@@ -61,7 +64,7 @@ function readProfile(): StoredProfile {
 }
 
 function AppInner() {
-  const { identity, login, loginStatus, clear } = useInternetIdentity();
+  const { identity, loginStatus, clear, setAuthed } = useInternetIdentity();
   const isLoggedIn = !!identity && loginStatus === "success";
   const isLoggingIn = loginStatus === "logging-in";
 
@@ -75,6 +78,10 @@ function AppInner() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+
+  // NEW: Auth sheet
+  const [authOpen, setAuthOpen] = useState(false);
+  const beginAuth = () => setAuthOpen(true);
 
   // Location state used by header/modal
   const [communityId, setCommunityId] = useState(() => getSavedCommunityId());
@@ -200,7 +207,7 @@ function AppInner() {
         return <MessagesSection initialConversationTitle={activeConversationTitle ?? undefined} />;
 
       case "events":
-        return <EventsPage communityLabel={locationLabel} isLoggedIn={isLoggedIn} onLogin={() => login()} />;
+        return <EventsPage communityLabel={locationLabel} isLoggedIn={isLoggedIn} onLogin={beginAuth} />;
 
       case "profile":
         return <ProfilePage communityLabel={locationLabel} />;
@@ -241,7 +248,7 @@ function AppInner() {
         onOpenNotifications={() => setNotificationsOpen(true)}
         onGoMessages={() => setActiveTab("messages")}
         onOpenSearch={() => setSearchOpen(true)}
-        onLogin={() => login()}
+        onLogin={beginAuth}
         onOpenMenu={() => setMenuOpen(true)}
       />
 
@@ -273,10 +280,19 @@ function AppInner() {
         onOpenChange={setSearchOpen}
         communityLabel={locationLabel}
         isLoggedIn={isLoggedIn}
-        onLogin={login}
+        onLogin={beginAuth}
         onNavigate={(tab) => {
           setSearchOpen(false);
           setActiveTab(tab);
+        }}
+      />
+
+      {/* NEW: Create account / Sign in */}
+      <AuthSheet
+        open={authOpen}
+        onOpenChange={setAuthOpen}
+        onAuthed={(identifier) => {
+          setAuthed(identifier);
         }}
       />
 

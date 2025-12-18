@@ -1,121 +1,103 @@
-import {
-  createContext,
-  useContext,
-  useState,
-  useMemo,
-  type ReactNode,
-} from "react";
-import { Capacitor } from "@capacitor/core";
-import { Browser } from "@capacitor/browser";
+// src/hooks/useInternetIdentity.tsx
+import React, { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
 type LoginStatus = "idle" | "logging-in" | "success" | "loginError";
 
-interface DevPrincipal {
-  toString(): string;
-}
+export type AuthUser = {
+  id: string;              // stable internal id
+  displayName: string;     // what to show in UI
+  email?: string;
+  phone?: string;
+};
 
-interface DevIdentity {
-  getPrincipal(): DevPrincipal;
-}
-
-interface InternetIdentityContextValue {
-  identity: DevIdentity | null;
+type InternetIdentityContextValue = {
+  user: AuthUser | null;
+  identity: AuthUser | null; // keep backward-compat with earlier code that checks `identity`
   loginStatus: LoginStatus;
-  login: () => Promise<void>;
+  beginAuth: () => void;      // opens your AuthSheet (email/phone)
+  completeAuth: (user: AuthUser) => void;
+  login: () => Promise<void>; // kept for backward-compat; calls beginAuth()
   clear: () => Promise<void>;
+};
+
+const LS_AUTH_USER = "afroconnect.authUser.v1";
+
+const InternetIdentityContext = createContext<InternetIdentityContextValue | undefined>(undefined);
+
+function safeParse<T>(raw: string | null, fallback: T): T {
+  try {
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
 }
 
-// ICP Internet Identity URL (you can change this later if you use a different provider URL)
-const ICP_IDENTITY_URL = "https://identity.ic0.app/#authorize";
-
-const InternetIdentityContext = createContext<
-  InternetIdentityContextValue | undefined
->(undefined);
-
-export function InternetIdentityProvider({
-  children,
-}: {
-  children: ReactNode;
-}) {
-  const [identity, setIdentity] = useState<DevIdentity | null>(null);
+export function InternetIdentityProvider({ children }: { children: ReactNode }) {
   const [loginStatus, setLoginStatus] = useState<LoginStatus>("idle");
+  const [user, setUser] = useState<AuthUser | null>(() => safeParse<AuthUser | null>(localStorage.getItem(LS_AUTH_USER), null));
+
+  // this flag can be used by App.tsx to open AuthSheet
+  const [authSheetOpen, setAuthSheetOpen] = useState(false);
 
   const value = useMemo<InternetIdentityContextValue>(
     () => ({
-      identity,
+      user,
+      identity: user, // for code that still checks identity
       loginStatus,
 
-      // Unified login for web + mobile
+      beginAuth: () => {
+        setAuthSheetOpen(true);
+      },
+
+      completeAuth: (u: AuthUser) => {
+        setLoginStatus("success");
+        setUser(u);
+        localStorage.setItem(LS_AUTH_USER, JSON.stringify(u));
+        setAuthSheetOpen(false);
+      },
+
+      // backward-compat: existing code calls login()
       login: async () => {
         try {
-          console.log("[Auth] login() called");
           setLoginStatus("logging-in");
-
-          const isNative = Capacitor.isNativePlatform();
-
-          if (isNative) {
-            // MOBILE (Android/iOS via Capacitor)
-            console.log("[Auth] Detected native platform – opening ICP in system browser");
-            try {
-              await Browser.open({
-                url: ICP_IDENTITY_URL,
-              });
-            } catch (browserError) {
-              console.error("[Auth] Error opening ICP in Browser:", browserError);
-            }
-          } else {
-            // WEB (normal browser)
-            console.log("[Auth] Web platform – optionally open ICP in new tab");
-            // Optional: open ICP in a new tab for the web version too
-            // window.open(ICP_IDENTITY_URL, "_blank", "noopener,noreferrer");
-          }
-
-          // DEV: simulate a successful identity so the app can function
-          const devIdentity: DevIdentity = {
-            getPrincipal() {
-              return {
-                toString: () => "dev-principal-afroconnect",
-              };
-            },
-          };
-
-          // Simulate a small delay (network/auth)
-          await new Promise((res) => setTimeout(res, 800));
-
-          setIdentity(devIdentity);
-          setLoginStatus("success");
-          console.log(
-            "[Auth] login success, principal:",
-            devIdentity.getPrincipal().toString()
-          );
-        } catch (e) {
-          console.error("[Auth] login error:", e);
+          setAuthSheetOpen(true);
+          // actual completion happens through completeAuth()
+        } catch {
           setLoginStatus("loginError");
         }
       },
 
       clear: async () => {
-        console.log("[Auth] clear() called");
-        setIdentity(null);
+        setUser(null);
         setLoginStatus("idle");
+        localStorage.removeItem(LS_AUTH_USER);
       },
     }),
-    [identity, loginStatus]
+    [user, loginStatus]
   );
 
   return (
     <InternetIdentityContext.Provider value={value}>
+      {/* Expose this state via window so App.tsx can open/close AuthSheet without circular deps */}
+      <AuthSheetBridge open={authSheetOpen} onOpenChange={setAuthSheetOpen} />
       {children}
     </InternetIdentityContext.Provider>
   );
 }
 
+/**
+ * Minimal bridge to allow App.tsx to know whether auth sheet should be open.
+ * App.tsx will read window.__AFROCONNECT_AUTH__.
+ */
+function AuthSheetBridge({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__AFROCONNECT_AUTH__ = { open, onOpenChange };
+  return null;
+}
+
 export function useInternetIdentity(): InternetIdentityContextValue {
   const ctx = useContext(InternetIdentityContext);
-  if (!ctx) {
-    throw new Error(
-      "useInternetIdentity must be used within an InternetIdentityProvider"
-    );
-  }
+  if (!ctx) throw new Error("useInternetIdentity must be used within an InternetIdentityProvider");
   return ctx;
 }
