@@ -3,113 +3,202 @@
 @tailwind utilities;
 
 @layer base {
-    :root {
-        --radius: 0.75rem;
-        /* Vibrant Afrofuturistic color palette - Light mode */
-        --background: 0.98 0.01 60;
-        --foreground: 0.25 0.02 30;
-        --card: 1 0 0;
-        --card-foreground: 0.25 0.02 30;
-        --popover: 1 0 0;
-        --popover-foreground: 0.25 0.02 30;
-        /* Rich orange-gold primary inspired by African sunsets */
-        --primary: 0.65 0.18 45;
-        --primary-foreground: 0.98 0.01 60;
-        /* Deep teal secondary inspired by African textiles */
-        --secondary: 0.55 0.12 200;
-        --secondary-foreground: 0.98 0.01 60;
-        --muted: 0.95 0.01 60;
-        --muted-foreground: 0.50 0.02 30;
-        /* Vibrant accent - warm red inspired by African art */
-        --accent: 0.58 0.20 25;
-        --accent-foreground: 0.98 0.01 60;
-        --destructive: 0.55 0.22 15;
-        --destructive-foreground: 0.98 0.01 60;
-        --border: 0.90 0.02 60;
-        --input: 0.90 0.02 60;
-        --ring: 0.65 0.18 45;
-        --chart-1: 0.65 0.18 45;
-        --chart-2: 0.55 0.12 200;
-        --chart-3: 0.58 0.20 25;
-        --chart-4: 0.70 0.15 140;
-        --chart-5: 0.60 0.18 280;
-        --sidebar: 0.98 0.01 60;
-        --sidebar-foreground: 0.25 0.02 30;
-        --sidebar-primary: 0.65 0.18 45;
-        --sidebar-primary-foreground: 0.98 0.01 60;
-        --sidebar-accent: 0.95 0.01 60;
-        --sidebar-accent-foreground: 0.25 0.02 30;
-        --sidebar-border: 0.90 0.02 60;
-        --sidebar-ring: 0.65 0.18 45;
-    }
+  :root {
+    --radius: 0.9rem;
 
-    .dark {
-        --background: 0.18 0.02 30;
-        --foreground: 0.95 0.01 60;
-        --card: 0.22 0.02 30;
-        --card-foreground: 0.95 0.01 60;
-        --popover: 0.22 0.02 30;
-        --popover-foreground: 0.95 0.01 60;
-        --primary: 0.70 0.18 45;
-        --primary-foreground: 0.18 0.02 30;
-        --secondary: 0.60 0.12 200;
-        --secondary-foreground: 0.95 0.01 60;
-        --muted: 0.28 0.02 30;
-        --muted-foreground: 0.65 0.02 60;
-        --accent: 0.62 0.20 25;
-        --accent-foreground: 0.95 0.01 60;
-        --destructive: 0.60 0.22 15;
-        --destructive-foreground: 0.95 0.01 60;
-        --border: 0.35 0.02 30;
-        --input: 0.35 0.02 30;
-        --ring: 0.70 0.18 45;
-        --chart-1: 0.70 0.18 45;
-        --chart-2: 0.60 0.12 200;
-        --chart-3: 0.62 0.20 25;
-        --chart-4: 0.75 0.15 140;
-        --chart-5: 0.65 0.18 280;
-        --sidebar: 0.22 0.02 30;
-        --sidebar-foreground: 0.95 0.01 60;
-        --sidebar-primary: 0.70 0.18 45;
-        --sidebar-primary-foreground: 0.18 0.02 30;
-        --sidebar-accent: 0.28 0.02 30;
-        --sidebar-accent-foreground: 0.95 0.01 60;
-        --sidebar-border: 0.35 0.02 30;
-        --sidebar-ring: 0.70 0.18 45;
-    }
+    /* ===== Core tokens (keep your palette) ===== */
+    --background: 0.98 0.01 60;
+    --foreground: 0.25 0.02 30;
 
-    * {
-        @apply border-border;
-    }
-    body {
-        @apply bg-background text-foreground;
-    }
+    --card: 1 0 0;
+    --card-foreground: 0.25 0.02 30;
+
+    --popover: 1 0 0;
+    --popover-foreground: 0.25 0.02 30;
+
+    /* Primary: rich orange-gold */
+    --primary: 0.65 0.18 45;
+    --primary-foreground: 0.98 0.01 60;
+
+    /* Secondary: deep teal */
+    --secondary: 0.55 0.12 200;
+    --secondary-foreground: 0.98 0.01 60;
+
+    --muted: 0.95 0.01 60;
+    --muted-foreground: 0.50 0.02 30;
+
+    /* Accent: warm red */
+    --accent: 0.58 0.20 25;
+    --accent-foreground: 0.98 0.01 60;
+
+    --destructive: 0.55 0.22 15;
+    --destructive-foreground: 0.98 0.01 60;
+
+    --border: 0.90 0.02 60;
+    --input: 0.90 0.02 60;
+    --ring: 0.65 0.18 45;
+
+    --chart-1: 0.65 0.18 45;
+    --chart-2: 0.55 0.12 200;
+    --chart-3: 0.58 0.20 25;
+    --chart-4: 0.70 0.15 140;
+    --chart-5: 0.60 0.18 280;
+
+    --sidebar: 0.98 0.01 60;
+    --sidebar-foreground: 0.25 0.02 30;
+    --sidebar-primary: 0.65 0.18 45;
+    --sidebar-primary-foreground: 0.98 0.01 60;
+    --sidebar-accent: 0.95 0.01 60;
+    --sidebar-accent-foreground: 0.25 0.02 30;
+    --sidebar-border: 0.90 0.02 60;
+    --sidebar-ring: 0.65 0.18 45;
+  }
+
+  .dark {
+    --background: 0.18 0.02 30;
+    --foreground: 0.95 0.01 60;
+
+    --card: 0.22 0.02 30;
+    --card-foreground: 0.95 0.01 60;
+
+    --popover: 0.22 0.02 30;
+    --popover-foreground: 0.95 0.01 60;
+
+    --primary: 0.70 0.18 45;
+    --primary-foreground: 0.18 0.02 30;
+
+    --secondary: 0.60 0.12 200;
+    --secondary-foreground: 0.95 0.01 60;
+
+    --muted: 0.28 0.02 30;
+    --muted-foreground: 0.65 0.02 60;
+
+    --accent: 0.62 0.20 25;
+    --accent-foreground: 0.95 0.01 60;
+
+    --destructive: 0.60 0.22 15;
+    --destructive-foreground: 0.95 0.01 60;
+
+    --border: 0.35 0.02 30;
+    --input: 0.35 0.02 30;
+    --ring: 0.70 0.18 45;
+
+    --chart-1: 0.70 0.18 45;
+    --chart-2: 0.60 0.12 200;
+    --chart-3: 0.62 0.20 25;
+    --chart-4: 0.75 0.15 140;
+    --chart-5: 0.65 0.18 280;
+
+    --sidebar: 0.22 0.02 30;
+    --sidebar-foreground: 0.95 0.01 60;
+    --sidebar-primary: 0.70 0.18 45;
+    --sidebar-primary-foreground: 0.18 0.02 30;
+    --sidebar-accent: 0.28 0.02 30;
+    --sidebar-accent-foreground: 0.95 0.01 60;
+    --sidebar-border: 0.35 0.02 30;
+    --sidebar-ring: 0.70 0.18 45;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  /* ===== Premium “app” feel ===== */
+  body {
+    @apply bg-background text-foreground;
+
+    /* crisp typography like production apps */
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+
+    /* depth background (subtle, modern) */
+    background:
+      radial-gradient(900px 600px at 18% 2%, oklch(var(--primary) / 0.12), transparent 55%),
+      radial-gradient(900px 600px at 85% 0%, oklch(var(--secondary) / 0.12), transparent 55%),
+      radial-gradient(1000px 700px at 50% 110%, oklch(var(--accent) / 0.06), transparent 60%),
+      oklch(var(--background));
+  }
+
+  /* Better tap feel on mobile */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Make focus rings feel “premium” */
+  :focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px oklch(var(--ring) / 0.25);
+    border-radius: calc(var(--radius) - 0.2rem);
+  }
 }
 
-/* Custom African-inspired patterns */
+@layer components {
+  /* Optional: apply this class to your page wrapper for consistent spacing */
+  .page-shell {
+    @apply min-h-screen;
+  }
+
+  /* Premium card look (use className="card-pro" on Cards you want upgraded) */
+  .card-pro {
+    border-radius: var(--radius);
+    background: oklch(var(--card));
+    box-shadow:
+      0 1px 1px rgba(0,0,0,0.04),
+      0 8px 24px rgba(0,0,0,0.06);
+    border: 1px solid oklch(var(--border) / 0.85);
+    backdrop-filter: saturate(1.1);
+  }
+
+  /* Premium input look (optional class) */
+  .input-pro {
+    border-radius: calc(var(--radius) - 0.2rem);
+    border: 1px solid oklch(var(--border));
+    background: oklch(var(--card));
+    box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+  }
+
+  /* Premium button look (optional class) */
+  .btn-pro {
+    border-radius: calc(var(--radius) - 0.2rem);
+    box-shadow:
+      0 1px 0 rgba(0,0,0,0.04),
+      0 10px 22px rgba(0,0,0,0.10);
+  }
+}
+
+/* ===== Your existing patterns (kept) ===== */
 .pattern-dots {
-    background-image: radial-gradient(circle, oklch(var(--primary) / 0.1) 1px, transparent 1px);
-    background-size: 20px 20px;
+  background-image: radial-gradient(circle, oklch(var(--primary) / 0.10) 1px, transparent 1px);
+  background-size: 20px 20px;
 }
 
 .pattern-grid {
-    background-image: 
-        linear-gradient(oklch(var(--border) / 0.5) 1px, transparent 1px),
-        linear-gradient(90deg, oklch(var(--border) / 0.5) 1px, transparent 1px);
-    background-size: 40px 40px;
+  background-image:
+    linear-gradient(oklch(var(--border) / 0.50) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(var(--border) / 0.50) 1px, transparent 1px);
+  background-size: 40px 40px;
 }
 
 /* Gradient overlays inspired by African sunsets */
 .gradient-sunset {
-    background: linear-gradient(135deg, 
-        oklch(0.65 0.18 45 / 0.9), 
-        oklch(0.58 0.20 25 / 0.9)
-    );
+  background: linear-gradient(
+    135deg,
+    oklch(0.65 0.18 45 / 0.92),
+    oklch(0.58 0.20 25 / 0.92)
+  );
 }
 
 .gradient-earth {
-    background: linear-gradient(135deg, 
-        oklch(0.55 0.12 200 / 0.9), 
-        oklch(0.70 0.15 140 / 0.9)
-    );
+  background: linear-gradient(
+    135deg,
+    oklch(0.55 0.12 200 / 0.92),
+    oklch(0.70 0.15 140 / 0.92)
+  );
 }

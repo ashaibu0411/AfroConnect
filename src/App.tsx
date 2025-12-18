@@ -1,7 +1,7 @@
 // src/App.tsx
 import { useEffect, useMemo, useState } from "react";
 
-import HomeFeed from "./components/HomeFeed";
+import HomeFeed from "@/components/HomeFeed";
 import BusinessDirectory from "./components/BusinessDirectory";
 import Marketplace from "./components/Marketplace";
 import StudentsHub from "./components/StudentsHub";
@@ -16,23 +16,22 @@ import NotificationsSheet from "./components/NotificationsSheet";
 import ProfilePage from "./components/ProfilePage";
 import SettingsPage from "./components/SettingsPage";
 import EventsPage from "./components/EventsPage";
+import AppSearchSheet from "./components/AppSearchSheet";
 
 import Logo from "./assets/afroconnect-logo.png";
 
 import { UserLocationProvider, useUserLocation } from "@/contexts/UserLocationContext";
 import { useInternetIdentity } from "./hooks/useInternetIdentity";
-
 import { COMMUNITIES, DEFAULT_COMMUNITY_ID } from "@/lib/communities";
 
 type TabId = TabRoute;
 
 const LS_COMMUNITY_KEY = "afroconnect.communityId";
-const LS_AREA_KEY_PREFIX = "afroconnect.areaId."; // + communityId
+const LS_AREA_KEY_PREFIX = "afroconnect.areaId.";
 
 const LS_PROFILE = "afroconnect.profile";
 const LS_AVATAR_URL = "afroconnect.avatarUrl";
 
-// Custom event so ProfilePage can tell AppHeader to refresh immediately
 export const PROFILE_UPDATED_EVENT = "afroconnect.profileUpdated";
 
 type StoredProfile = {
@@ -75,6 +74,7 @@ function AppInner() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // Location state used by header/modal
   const [communityId, setCommunityId] = useState(() => getSavedCommunityId());
@@ -200,7 +200,7 @@ function AppInner() {
         return <MessagesSection initialConversationTitle={activeConversationTitle ?? undefined} />;
 
       case "events":
-        return <EventsPage communityLabel={locationLabel} />;
+        return <EventsPage communityLabel={locationLabel} isLoggedIn={isLoggedIn} onLogin={() => login()} />;
 
       case "profile":
         return <ProfilePage communityLabel={locationLabel} />;
@@ -240,6 +240,7 @@ function AppInner() {
         onOpenLocation={() => setLocationModalOpen(true)}
         onOpenNotifications={() => setNotificationsOpen(true)}
         onGoMessages={() => setActiveTab("messages")}
+        onOpenSearch={() => setSearchOpen(true)}
         onLogin={() => login()}
         onOpenMenu={() => setMenuOpen(true)}
       />
@@ -266,6 +267,18 @@ function AppInner() {
       />
 
       <NotificationsSheet open={notificationsOpen} onOpenChange={setNotificationsOpen} communityName={locationLabel} />
+
+      <AppSearchSheet
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        communityLabel={locationLabel}
+        isLoggedIn={isLoggedIn}
+        onLogin={login}
+        onNavigate={(tab) => {
+          setSearchOpen(false);
+          setActiveTab(tab);
+        }}
+      />
 
       <main className="flex-1">{renderContent()}</main>
     </div>

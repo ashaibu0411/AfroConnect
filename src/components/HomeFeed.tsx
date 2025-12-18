@@ -1,8 +1,9 @@
 // src/components/HomeFeed.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import {
   MapPin,
@@ -10,15 +11,22 @@ import {
   Store,
   MessageCircle,
   Building2,
-  Image as ImageIcon,
-  Video as VideoIcon,
   Heart,
   Send,
-  X,
   Trash2,
   LogIn,
+  MoreHorizontal,
+  Video as VideoIcon,
+  Plus,
+  FileText,
+  HelpCircle,
+  ShoppingBag,
+  CalendarDays,
 } from "lucide-react";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
+
+import CreateMenuSheet, { CreateKind } from "@/components/CreateMenuSheet";
+import CreateComposerSheet, { ComposerPayload } from "@/components/CreateComposerSheet";
 
 type Props = {
   userLocation?: {
@@ -35,6 +43,15 @@ type MediaItem = {
   persistent: boolean;
 };
 
+type CommentItem = {
+  id: string;
+  authorName: string;
+  createdAt: number;
+  text: string;
+};
+
+type PostType = "post" | "ask" | "sell" | "event";
+
 type PostItem = {
   id: string;
   authorName: string;
@@ -43,22 +60,20 @@ type PostItem = {
   text: string;
   media: MediaItem[];
   likes: number;
-  comments: number; // legacy counter (we keep in sync with real comment list)
-};
+  comments: number;
+  commentsList?: CommentItem[];
+  postType?: PostType;
 
-type CommentItem = {
-  id: string;
-  postId: string;
-  authorName: string;
-  text: string;
-  createdAt: number;
+  // Optional metadata for sell/event (MVP)
+  title?: string;
+  price?: string;
+  when?: string;
+  where?: string;
 };
 
 const LS_PROFILE = "afroconnect.profile";
 const LS_POSTS = "afroconnect.posts.v1";
-const LS_COMMENTS = "afroconnect.comments.v1";
 const LS_COMMUNITY_KEY = "afroconnect.communityId";
-const LS_AREA_KEY_PREFIX = "afroconnect.areaId.";
 
 function safeParse<T>(raw: string | null, fallback: T): T {
   try {
@@ -82,38 +97,8 @@ function savePosts(posts: PostItem[]) {
   localStorage.setItem(LS_POSTS, JSON.stringify(posts));
 }
 
-function readComments(): CommentItem[] {
-  return safeParse<CommentItem[]>(localStorage.getItem(LS_COMMENTS), []);
-}
-
-function saveComments(comments: CommentItem[]) {
-  localStorage.setItem(LS_COMMENTS, JSON.stringify(comments));
-}
-
 function uid() {
   return (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`) as string;
-}
-
-// Very lightweight local policy block (MVP)
-// You can replace this with a real moderation service later.
-function violatesPolicy(text: string) {
-  const s = (text || "").toLowerCase();
-  const blocked = [
-    "porn",
-    "nude",
-    "sex",
-    "sexual",
-    "xxx",
-    "onlyfans",
-    "rape",
-    "kill",
-    "murder",
-    "shoot",
-    "gun down",
-    "terrorist",
-    "behead",
-  ];
-  return blocked.some((w) => s.includes(w));
 }
 
 function getCommunityLabelFallback() {
@@ -122,249 +107,225 @@ function getCommunityLabelFallback() {
   return cid;
 }
 
+async function shareTextOrUrl(payload: { title?: string; text?: string; url?: string }) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const nav: any = navigator;
+    if (nav?.share) {
+      await nav.share(payload);
+      return true;
+    }
+  } catch {
+    // ignore cancel
+  }
+
+  const str = [payload.title, payload.text, payload.url].filter(Boolean).join("\n");
+  try {
+    await navigator.clipboard.writeText(str);
+    toast.success("Copied to clipboard.");
+    return true;
+  } catch {
+    toast.info("Share not available. Copy manually.");
+    return false;
+  }
+}
+
+type FeedScope = "local" | "global";
+type FeedDensity = "comfortable" | "compact";
+
 export default function HomeFeed({ userLocation }: Props) {
   const { identity, login, loginStatus } = useInternetIdentity();
   const isLoggedIn = !!identity && loginStatus === "success";
-  const isGuest = !isLoggedIn;
+  const canInteract = isLoggedIn;
 
   const communityLabel = useMemo(() => {
     return getCommunityLabelFallback();
   }, [userLocation?.communityId, userLocation?.areaId]);
 
-  const [posts, setPosts] = useState<PostItem[]>(() => readPosts());
+  const [posts, setPosts] = useState<PostItem[]>(() => {
+    const loaded = readPosts();
+    return loaded.map((p) => ({
+      ...p,
+      commentsList: p.commentsList ?? [],
+      comments: p.comments ?? (p.commentsList?.length ?? 0),
+      postType: p.postType ?? "post",
+    }));
+  });
 
-  // Comments store (local)
-  const [commentsStore, setCommentsStore] = useState<CommentItem[]>(() => readComments());
-  const [openCommentsForPostId, setOpenCommentsForPostId] = useState<string | null>(null);
-  const [commentDraftByPost, setCommentDraftByPost] = useState<Record<string, string>>({});
+  // Option 2: Local first; extend global when no results
+  const [feedScope, setFeedScope] = useState<FeedScope>("local");
+  const [feedSearch, setFeedSearch] = useState("");
 
-  // Composer
-  const [text, setText] = useState("");
-  const [media, setMedia] = useState<MediaItem[]>([]);
-  const [isPosting, setIsPosting] = useState(false);
+  // Density toggle + persistence
+  const [density, setDensity] = useState<FeedDensity>(() => {
+    const saved = localStorage.getItem("afroconnect.feedDensity") as FeedDensity | null;
+    return saved === "compact" || saved === "comfortable" ? saved : "comfortable";
+  });
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    localStorage.setItem("afroconnect.feedDensity", density);
+  }, [density]);
 
-  // Persist posts whenever they change
+  // Comments drawer
+  const [openThread, setOpenThread] = useState(false);
+  const [threadPostId, setThreadPostId] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
+
+  // NEW: FAB → create menu → full-screen composer
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerKind, setComposerKind] = useState<CreateKind>("post");
+
   useEffect(() => {
     savePosts(posts);
   }, [posts]);
 
-  // Persist comments whenever they change + keep post comment counts in sync (for UI counters)
-  useEffect(() => {
-    saveComments(commentsStore);
+  const isGuest = !isLoggedIn;
 
-    // Keep legacy "comments" count consistent with comment list
+  const currentUserName = useMemo(() => readDisplayName(), [isLoggedIn]);
+
+  const activeThreadPost = useMemo(() => {
+    if (!threadPostId) return null;
+    return posts.find((p) => p.id === threadPostId) ?? null;
+  }, [threadPostId, posts]);
+
+  // Filter: Local first; if no results and has a term, extend global
+  const visiblePosts = useMemo(() => {
+    const term = feedSearch.trim().toLowerCase();
+    const matchesTerm = (p: PostItem) => {
+      if (!term) return true;
+      const hay = `${p.authorName} ${p.communityLabel} ${p.text} ${p.title ?? ""} ${p.where ?? ""}`.toLowerCase();
+      return hay.includes(term);
+    };
+
+    const localOnly = posts.filter((p) => p.communityLabel === communityLabel && matchesTerm(p));
+    const globalAll = posts.filter((p) => matchesTerm(p));
+
+    if (feedScope === "global") return globalAll;
+    if (localOnly.length === 0 && term) return globalAll;
+    return localOnly;
+  }, [posts, feedSearch, feedScope, communityLabel]);
+
+  function openComments(postId: string) {
+    if (!canInteract) {
+      login();
+      return;
+    }
+    setThreadPostId(postId);
+    setCommentDraft("");
+    setOpenThread(true);
+  }
+
+  function submitComment() {
+    if (!canInteract) {
+      login();
+      return;
+    }
+    if (!threadPostId) return;
+    const txt = commentDraft.trim();
+    if (!txt) return;
+
+    const c: CommentItem = {
+      id: uid(),
+      authorName: readDisplayName(),
+      createdAt: Date.now(),
+      text: txt,
+    };
+
     setPosts((prev) =>
       prev.map((p) => {
-        const count = commentsStore.filter((c) => c.postId === p.id).length;
-        return p.comments === count ? p : { ...p, comments: count };
+        if (p.id !== threadPostId) return p;
+        const list = [...(p.commentsList ?? []), c];
+        return { ...p, commentsList: list, comments: list.length };
       })
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [commentsStore]);
 
-  // Cleanup any object URLs (videos) when component unmounts
-  useEffect(() => {
-    return () => {
-      media.forEach((m) => {
-        if (!m.persistent && m.url.startsWith("blob:")) URL.revokeObjectURL(m.url);
-      });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const canPost = useMemo(() => {
-    if (!isLoggedIn) return false;
-    return (text.trim().length > 0 || media.length > 0) && !isPosting;
-  }, [isLoggedIn, text, media.length, isPosting]);
-
-  async function handlePickFiles(files: FileList | null) {
-    if (!isLoggedIn) {
-      login();
-      return;
-    }
-    if (!files || files.length === 0) return;
-
-    const next: MediaItem[] = [];
-    const picked = Array.from(files).slice(0, 6);
-
-    for (const file of picked) {
-      const isImage = file.type.startsWith("image/");
-      const isVideo = file.type.startsWith("video/");
-      if (!isImage && !isVideo) continue;
-
-      if (isImage) {
-        const dataUrl = await readAsDataUrl(file);
-        next.push({ id: uid(), kind: "image", url: dataUrl, name: file.name, persistent: true });
-      } else {
-        const blobUrl = URL.createObjectURL(file);
-        next.push({ id: uid(), kind: "video", url: blobUrl, name: file.name, persistent: false });
-      }
-    }
-
-    setMedia((prev) => [...prev, ...next]);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
-
-  function removeMedia(id: string) {
-    setMedia((prev) => {
-      const item = prev.find((m) => m.id === id);
-      if (item && !item.persistent && item.url.startsWith("blob:")) URL.revokeObjectURL(item.url);
-      return prev.filter((m) => m.id !== id);
-    });
-  }
-
-  async function handlePost() {
-    if (!isLoggedIn) {
-      login();
-      return;
-    }
-    if (!canPost) return;
-
-    const proposedText = text.trim();
-
-    if (violatesPolicy(proposedText)) {
-      toast.error("This post appears to violate the content policy (sexual/violent content). Please edit and try again.");
-      return;
-    }
-
-    setIsPosting(true);
-
-    try {
-      const authorName = readDisplayName();
-
-      const newPost: PostItem = {
-        id: uid(),
-        authorName,
-        communityLabel,
-        createdAt: Date.now(),
-        text: proposedText,
-        media,
-        likes: 0,
-        comments: 0,
-      };
-
-      setPosts((prev) => [newPost, ...prev]);
-
-      setText("");
-      setMedia([]);
-      toast.success("Posted.");
-    } finally {
-      setIsPosting(false);
-    }
+    setCommentDraft("");
   }
 
   function toggleLike(postId: string) {
-    if (!isLoggedIn) {
+    if (!canInteract) {
       login();
       return;
     }
     setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, likes: p.likes + 1 } : p)));
   }
 
-  function toggleComments(postId: string) {
-    if (!isLoggedIn) {
-      login();
-      return;
-    }
-    setOpenCommentsForPostId((cur) => (cur === postId ? null : postId));
-  }
-
-  function addComment(postId: string) {
-    if (!isLoggedIn) {
-      login();
-      return;
-    }
-
-    const draft = (commentDraftByPost[postId] || "").trim();
-    if (!draft) return;
-
-    if (violatesPolicy(draft)) {
-      toast.error("This comment appears to violate the content policy. Please edit and try again.");
-      return;
-    }
-
-    const authorName = readDisplayName();
-    const newComment: CommentItem = {
-      id: uid(),
-      postId,
-      authorName,
-      text: draft,
-      createdAt: Date.now(),
-    };
-
-    // newest-first list (better UX: you immediately see your comment)
-    setCommentsStore((prev) => [newComment, ...prev]);
-    setCommentDraftByPost((prev) => ({ ...prev, [postId]: "" }));
-    setOpenCommentsForPostId(postId);
-  }
-
-  function deleteComment(commentId: string) {
-    if (!isLoggedIn) return;
-    setCommentsStore((prev) => prev.filter((c) => c.id !== commentId));
-    toast.success("Comment deleted.");
-  }
-
   function deletePost(postId: string) {
-    if (!isLoggedIn) return;
-
+    if (!canInteract) return;
     setPosts((prev) => prev.filter((p) => p.id !== postId));
-    // Remove related comments too
-    setCommentsStore((prev) => prev.filter((c) => c.postId !== postId));
-
     toast.success("Post deleted.");
   }
 
   async function sharePost(p: PostItem) {
-    if (!isLoggedIn) {
+    if (!canInteract) {
       login();
       return;
     }
+    const preview = (p.text || "").slice(0, 180);
+    await shareTextOrUrl({
+      title: `AfroConnect · ${p.communityLabel}`,
+      text: `${p.authorName}: ${preview}${preview.length >= 180 ? "…" : ""}`,
+      url: window.location.href,
+    });
+  }
 
-    // Local MVP: share/copy a nice snippet
-    const snippet =
-      p.text?.trim()
-        ? p.text.trim().length > 220
-          ? p.text.trim().slice(0, 220) + "…"
-          : p.text.trim()
-        : "(media post)";
-
-    const shareText = `AfroConnect • ${p.communityLabel}\n${snippet}`;
-
-    try {
-      // Use native share if available
-      const nav: any = navigator as any;
-      if (nav.share) {
-        await nav.share({ text: shareText });
-        toast.success("Shared.");
-        return;
-      }
-
-      // Otherwise copy to clipboard
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareText);
-        toast.success("Copied to clipboard.");
-        return;
-      }
-
-      // Final fallback
-      toast.info("Share is not supported on this browser yet.");
-    } catch {
-      toast.error("Could not share. Try again.");
+  function typeChip(t?: PostType) {
+    switch (t) {
+      case "ask":
+        return { label: "Ask", icon: <HelpCircle className="h-3.5 w-3.5" /> };
+      case "sell":
+        return { label: "For Sale", icon: <ShoppingBag className="h-3.5 w-3.5" /> };
+      case "event":
+        return { label: "Event", icon: <CalendarDays className="h-3.5 w-3.5" /> };
+      default:
+        return { label: "Post", icon: <FileText className="h-3.5 w-3.5" /> };
     }
   }
 
-  const currentUserName = useMemo(() => readDisplayName(), [isLoggedIn]);
+  function onFabClick() {
+    if (!canInteract) {
+      login();
+      return;
+    }
+    setCreateMenuOpen(true);
+  }
+
+  function onPickCreateKind(k: CreateKind) {
+    setCreateMenuOpen(false);
+    setComposerKind(k);
+    setComposerOpen(true);
+  }
+
+  function onComposerSubmit(payload: ComposerPayload) {
+    const authorName = readDisplayName();
+
+    const newPost: PostItem = {
+      id: uid(),
+      authorName,
+      communityLabel,
+      createdAt: Date.now(),
+      text: payload.text,
+      media: payload.media,
+      likes: 0,
+      comments: 0,
+      commentsList: [],
+      postType: payload.kind,
+      title: payload.title,
+      price: payload.price,
+      when: payload.when,
+      where: payload.where,
+    };
+
+    setPosts((prev) => [newPost, ...prev]);
+  }
 
   return (
-    <div className="container max-w-5xl py-7 space-y-7">
-      {/* ================================= */}
-      {/* GUEST TOP CARD (REPLACES OLD ONE) */}
-      {/* ================================= */}
+    <div className="mx-auto w-full max-w-5xl px-4 py-6 space-y-6 relative">
+      {/* GUEST TOP CARD (kept) */}
       {isGuest && (
         <Card className="border bg-white/70 backdrop-blur shadow-sm rounded-2xl">
-          <CardContent className="p-10 text-center space-y-7">
+          <CardContent className="p-8 text-center space-y-6">
             <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">Welcome to AfroConnect</h1>
 
             <p className="text-muted-foreground max-w-2xl mx-auto leading-relaxed">
@@ -383,112 +344,104 @@ export default function HomeFeed({ userLocation }: Props) {
             <p className="text-sm text-muted-foreground">
               Current community: <strong>{communityLabel}</strong>
             </p>
+
+            <Button onClick={login} className="bg-gradient-to-r from-orange-600 to-green-600 hover:opacity-90">
+              <LogIn className="h-4 w-4 mr-2" />
+              Login to post
+            </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* ================= */}
-      {/* CREATE POST CARD  */}
-      {/* ================= */}
+      {/* COMMUNITY FEED (with toggles + density) */}
       <Card className="border shadow-sm rounded-2xl">
-        <CardHeader>
-          <h2 className="text-lg font-semibold">Create a post</h2>
-          <p className="text-xs text-muted-foreground mt-1">
-            By posting, you agree not to share sexual content, graphic violence, threats, or hate.
-          </p>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          <Textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={
-              isLoggedIn ? `What’s happening in ${communityLabel}?` : "You can browse posts publicly. Login to post, like, or comment."
-            }
-            disabled={!isLoggedIn}
-          />
-
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,video/*"
-              multiple
-              className="hidden"
-              onChange={(e) => handlePickFiles(e.target.files)}
-            />
-
-            <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={!isLoggedIn}>
-              <ImageIcon className="h-4 w-4 mr-2" />
-              Add photo/video
-            </Button>
-
-            {!isLoggedIn && (
-              <Button type="button" variant="outline" onClick={login}>
-                <LogIn className="h-4 w-4 mr-2" />
-                Login
-              </Button>
-            )}
-
-            <div className="flex-1" />
-
-            <Button type="button" onClick={handlePost} disabled={!canPost} className="min-w-[120px]">
-              {isPosting ? "Posting..." : "Post"}
-            </Button>
-          </div>
-
-          {media.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {media.map((m) => (
-                <div key={m.id} className="relative border rounded-xl overflow-hidden bg-background">
-                  <button
-                    type="button"
-                    className="absolute top-2 right-2 h-8 w-8 rounded-full bg-background/90 border flex items-center justify-center hover:bg-muted"
-                    onClick={() => removeMedia(m.id)}
-                    title="Remove"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-
-                  {m.kind === "image" ? (
-                    <img src={m.url} alt={m.name} className="h-40 w-full object-cover" />
-                  ) : (
-                    <div className="h-40 w-full bg-black flex items-center justify-center">
-                      <video src={m.url} controls className="h-40 w-full object-contain" />
-                    </div>
-                  )}
-
-                  {!m.persistent && (
-                    <div className="px-2 py-2 text-[11px] text-muted-foreground border-t">
-                      <VideoIcon className="inline h-3 w-3 mr-1" />
-                      Video preview (won’t persist after refresh yet)
-                    </div>
-                  )}
-                </div>
-              ))}
+        <CardHeader className="space-y-3">
+          <div className="flex flex-row items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-primary" />
+              <h2 className="font-semibold">Community Feed</h2>
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ===================== */}
-      {/* COMMUNITY FEED (CORE) */}
-      {/* ===================== */}
-      <Card className="border shadow-sm rounded-2xl">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div className="flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-primary" />
-            <h2 className="font-semibold">Community Feed</h2>
+            <span className="text-sm text-muted-foreground">{communityLabel}</span>
           </div>
-          <span className="text-sm text-muted-foreground">{communityLabel}</span>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setFeedScope("local")}
+                className={[
+                  "px-4 py-1.5 rounded-full text-sm border transition",
+                  feedScope === "local"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background hover:bg-muted/50",
+                ].join(" ")}
+              >
+                Local
+              </button>
+              <button
+                type="button"
+                onClick={() => setFeedScope("global")}
+                className={[
+                  "px-4 py-1.5 rounded-full text-sm border transition",
+                  feedScope === "global"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background hover:bg-muted/50",
+                ].join(" ")}
+              >
+                Global
+              </button>
+            </div>
+
+            <Input
+              value={feedSearch}
+              onChange={(e) => setFeedSearch(e.target.value)}
+              placeholder={feedScope === "local" ? "Search local posts…" : "Search global posts…"}
+              className="sm:max-w-[320px]"
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setDensity("comfortable")}
+              className={[
+                "px-4 py-1.5 rounded-full text-sm border transition",
+                density === "comfortable"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background hover:bg-muted/50",
+              ].join(" ")}
+            >
+              Comfortable
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDensity("compact")}
+              className={[
+                "px-4 py-1.5 rounded-full text-sm border transition",
+                density === "compact"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background hover:bg-muted/50",
+              ].join(" ")}
+            >
+              Compact
+            </button>
+          </div>
+
+          {feedScope === "local" && feedSearch.trim() ? (
+            <div className="text-xs text-muted-foreground">
+              Local search first. If nothing is found locally, AfroConnect extends to global automatically.
+            </div>
+          ) : null}
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {posts.length === 0 ? (
+          {visiblePosts.length === 0 ? (
             <div className="text-center py-10">
-              <p className="text-lg font-medium">No posts yet</p>
-              <p className="text-sm text-muted-foreground mt-1">Be the first to post in {communityLabel}.</p>
-
+              <p className="text-lg font-medium">No posts found</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                {feedScope === "local" ? "Try another search, or switch to Global." : "Try another search term."}
+              </p>
               {!isLoggedIn && (
                 <Button className="mt-4" onClick={login}>
                   Login to Post
@@ -496,35 +449,63 @@ export default function HomeFeed({ userLocation }: Props) {
               )}
             </div>
           ) : (
-            posts.map((p) => {
-              const isMine = isLoggedIn && p.authorName === currentUserName && currentUserName !== "Guest";
+            visiblePosts.map((p) => {
+              const isMine = canInteract && p.authorName === currentUserName && currentUserName !== "Guest";
+              const commentCount = p.commentsList?.length ?? p.comments ?? 0;
 
-              const postComments = commentsStore.filter((c) => c.postId === p.id);
-              // newest-first (we store newest first)
-              const latestComment = postComments[0] ?? null;
-              const commentsOpen = openCommentsForPostId === p.id;
+              const chip = typeChip(p.postType);
+              const latest = (p.commentsList ?? []).slice(density === "compact" ? -1 : -2);
 
               return (
                 <Card key={p.id} className="border rounded-2xl">
-                  <CardContent className="p-5 space-y-3">
+                  <CardContent className={density === "compact" ? "p-3 space-y-2" : "p-5 space-y-3"}>
+                    {/* Header */}
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold">{p.authorName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {p.communityLabel} · {formatTimeAgo(p.createdAt)}
-                        </p>
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-semibold">{p.authorName}</p>
+
+                          <span className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full bg-muted text-muted-foreground">
+                            {chip.icon}
+                            {chip.label}
+                          </span>
+
+                          <span className="text-xs text-muted-foreground">·</span>
+                          <p className="text-xs text-muted-foreground">
+                            {p.communityLabel} · {formatTimeAgo(p.createdAt)}
+                          </p>
+                        </div>
                       </div>
 
-                      {isMine && (
-                        <Button variant="outline" size="sm" onClick={() => deletePost(p.id)}>
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
-                        </Button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {isMine ? (
+                          <Button variant="outline" size="sm" onClick={() => deletePost(p.id)}>
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="More"
+                            onClick={() => toast.info("Next: hide/report/mute actions (MVP).")}
+                          >
+                            <MoreHorizontal className="h-5 w-5" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
 
+                    {/* Optional title line (Sell/Event) */}
+                    {p.title ? <div className="font-semibold">{p.title}</div> : null}
+                    {p.price ? <div className="text-sm text-muted-foreground">Price: {p.price}</div> : null}
+                    {p.when ? <div className="text-sm text-muted-foreground">When: {p.when}</div> : null}
+                    {p.where ? <div className="text-sm text-muted-foreground">Where: {p.where}</div> : null}
+
+                    {/* Body */}
                     {p.text ? <p className="text-sm whitespace-pre-wrap leading-relaxed">{p.text}</p> : null}
 
+                    {/* Media */}
                     {p.media.length > 0 && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {p.media.map((m) =>
@@ -533,146 +514,82 @@ export default function HomeFeed({ userLocation }: Props) {
                               key={m.id}
                               src={m.url}
                               alt={m.name}
-                              className="w-full rounded-xl border object-cover max-h-[360px]"
+                              className={[
+                                "w-full rounded-xl border object-cover",
+                                density === "compact" ? "max-h-[220px]" : "max-h-[360px]",
+                              ].join(" ")}
                             />
                           ) : (
                             <video
                               key={m.id}
                               src={m.url}
                               controls
-                              className="w-full rounded-xl border bg-black max-h-[360px]"
+                              className={[
+                                "w-full rounded-xl border bg-black",
+                                density === "compact" ? "max-h-[220px]" : "max-h-[360px]",
+                              ].join(" ")}
                             />
                           )
                         )}
                       </div>
                     )}
 
+                    {/* Nextdoor-style counts */}
                     <div className="flex items-center gap-6 text-sm text-muted-foreground">
                       <span className="inline-flex items-center gap-2">
                         <Heart className="h-4 w-4" /> {p.likes}
                       </span>
                       <span className="inline-flex items-center gap-2">
-                        <MessageCircle className="h-4 w-4" /> {postComments.length}
+                        <MessageCircle className="h-4 w-4" /> {commentCount}
                       </span>
                     </div>
 
-                    {/* Best UX: show latest comment preview ABOVE action buttons */}
-                    {latestComment && !commentsOpen && (
-                      <button
-                        type="button"
-                        className="w-full text-left border rounded-xl px-4 py-3 bg-white/60 hover:bg-white/80 transition"
-                        onClick={() => toggleComments(p.id)}
-                        disabled={!isLoggedIn}
-                        title={isLoggedIn ? "View comments" : "Login to view comments"}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <span className="text-sm font-semibold">{latestComment.authorName}</span>{" "}
-                            <span className="text-sm text-muted-foreground">
-                              {latestComment.text.length > 140 ? latestComment.text.slice(0, 140) + "…" : latestComment.text}
-                            </span>
+                    {/* Inline latest comments */}
+                    {latest.length > 0 && (
+                      <div className="border rounded-2xl bg-muted/25 p-3 space-y-2">
+                        {latest.map((c) => (
+                          <div key={c.id} className="text-sm">
+                            <span className="font-semibold">{c.authorName}</span>{" "}
+                            <span className="text-muted-foreground text-xs">· {formatTimeAgo(c.createdAt)}</span>
+                            <div className="text-sm mt-1 line-clamp-2 whitespace-pre-wrap">{c.text}</div>
                           </div>
-                          <span className="text-xs text-muted-foreground shrink-0">{formatTimeAgo(latestComment.createdAt)}</span>
-                        </div>
+                        ))}
 
-                        {postComments.length > 1 && (
-                          <div className="mt-2 text-xs text-muted-foreground underline">
-                            View all {postComments.length} comments
-                          </div>
-                        )}
-                      </button>
+                        {commentCount > (density === "compact" ? 1 : 2) ? (
+                          <button
+                            type="button"
+                            className="text-xs text-primary underline underline-offset-4"
+                            onClick={() => openComments(p.id)}
+                          >
+                            View all comments
+                          </button>
+                        ) : null}
+                      </div>
                     )}
 
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm" disabled={!isLoggedIn} onClick={() => toggleLike(p.id)}>
+                    {/* Actions */}
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <Button variant="outline" size="sm" disabled={!canInteract} onClick={() => toggleLike(p.id)}>
                         <Heart className="h-4 w-4 mr-2" />
                         Like
                       </Button>
 
-                      <Button variant="outline" size="sm" disabled={!isLoggedIn} onClick={() => toggleComments(p.id)}>
+                      <Button variant="outline" size="sm" disabled={!canInteract} onClick={() => openComments(p.id)}>
                         <MessageCircle className="h-4 w-4 mr-2" />
-                        {commentsOpen ? "Close comments" : "Comment"}
+                        Comments
                       </Button>
 
-                      <Button variant="outline" size="sm" disabled={!isLoggedIn} onClick={() => sharePost(p)}>
+                      <Button variant="outline" size="sm" disabled={!canInteract} onClick={() => sharePost(p)}>
                         <Send className="h-4 w-4 mr-2" />
                         Share
                       </Button>
 
-                      {!isLoggedIn && (
+                      {!canInteract && (
                         <Button size="sm" onClick={login}>
                           Login to interact
                         </Button>
                       )}
                     </div>
-
-                    {/* COMMENTS PANEL */}
-                    {commentsOpen && (
-                      <div className="mt-2 border rounded-2xl bg-white/60">
-                        <div className="px-4 py-4 border-b">
-                          <p className="text-sm font-semibold">Comments</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Be respectful. No sexual content, violence promotion, threats, or hate.
-                          </p>
-                        </div>
-
-                        <div className="p-4 space-y-3">
-                          <div className="flex gap-2 items-start">
-                            <Textarea
-                              value={commentDraftByPost[p.id] || ""}
-                              onChange={(e) =>
-                                setCommentDraftByPost((prev) => ({ ...prev, [p.id]: e.target.value }))
-                              }
-                              placeholder="Write a comment..."
-                              className="min-h-[44px]"
-                              disabled={!isLoggedIn}
-                            />
-                            <Button
-                              onClick={() => addComment(p.id)}
-                              disabled={!isLoggedIn || !(commentDraftByPost[p.id] || "").trim()}
-                              className="shrink-0"
-                            >
-                              Post
-                            </Button>
-                          </div>
-
-                          {postComments.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No comments yet. Be the first.</p>
-                          ) : (
-                            <div className="space-y-2">
-                              {postComments.map((c) => {
-                                const canDelete = isLoggedIn && c.authorName === currentUserName && currentUserName !== "Guest";
-                                return (
-                                  <div key={c.id} className="border rounded-xl bg-background p-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="min-w-0">
-                                        <p className="text-sm font-semibold">{c.authorName}</p>
-                                        <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">
-                                          {c.text}
-                                        </p>
-                                      </div>
-
-                                      <div className="shrink-0 text-right">
-                                        <p className="text-xs text-muted-foreground">{formatTimeAgo(c.createdAt)}</p>
-                                        {canDelete && (
-                                          <button
-                                            type="button"
-                                            className="mt-2 text-xs underline text-muted-foreground hover:text-foreground"
-                                            onClick={() => deleteComment(c.id)}
-                                          >
-                                            Delete
-                                          </button>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
               );
@@ -681,45 +598,122 @@ export default function HomeFeed({ userLocation }: Props) {
         </CardContent>
       </Card>
 
-      {/* ================================= */}
-      {/* GUEST BOTTOM CARD (FOOTER CTA)    */}
-      {/* ================================= */}
-      {isGuest && (
-        <Card className="border bg-white/70 backdrop-blur shadow-sm rounded-2xl">
-          <CardContent className="p-10 text-center space-y-5">
-            <h3 className="text-2xl font-extrabold">Ready to Join the Community?</h3>
-            <p className="text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-              Login to unlock full access: post updates, join groups, connect with businesses, discover faith centers, buy
-              and sell in the marketplace, and send direct messages!
-            </p>
+      {/* FAB (Nextdoor style) */}
+      <button
+        type="button"
+        onClick={onFabClick}
+        className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg bg-primary text-primary-foreground flex items-center justify-center hover:opacity-95 active:scale-95 transition"
+        title="Create"
+      >
+        <Plus className="h-6 w-6" />
+      </button>
 
-            <Button
-              onClick={login}
-              className="bg-gradient-to-r from-orange-600 to-green-600 hover:opacity-90 transition-opacity px-6"
-            >
-              <LogIn className="h-4 w-4 mr-2" />
-              Login with Internet Identity
+      {/* Create menu */}
+      <CreateMenuSheet open={createMenuOpen} onOpenChange={setCreateMenuOpen} onPick={onPickCreateKind} />
+
+      {/* Full-screen composer */}
+      <CreateComposerSheet
+        open={composerOpen}
+        onOpenChange={setComposerOpen}
+        kind={composerKind}
+        communityLabel={communityLabel}
+        canInteract={canInteract}
+        onRequireLogin={login}
+        onSubmit={onComposerSubmit}
+      />
+
+      {/* COMMENTS DRAWER */}
+      <Sheet open={openThread} onOpenChange={setOpenThread}>
+        <SheetContent side="bottom" className="p-0 sm:max-w-none">
+          <div className="p-4 border-b">
+            <SheetHeader>
+              <SheetTitle>Comments</SheetTitle>
+            </SheetHeader>
+            {activeThreadPost ? (
+              <p className="text-xs text-muted-foreground mt-1">
+                {activeThreadPost.authorName} · {formatTimeAgo(activeThreadPost.createdAt)}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="p-4 space-y-3 max-h-[60vh] overflow-auto">
+            {activeThreadPost ? (
+              <>
+                <Card className="border rounded-xl">
+                  <CardContent className="p-4 space-y-2">
+                    {activeThreadPost.text ? (
+                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{activeThreadPost.text}</p>
+                    ) : null}
+
+                    {activeThreadPost.media?.length ? (
+                      <div className="grid grid-cols-3 gap-2">
+                        {activeThreadPost.media.slice(0, 6).map((m) =>
+                          m.kind === "image" ? (
+                            <img
+                              key={m.id}
+                              src={m.url}
+                              alt={m.name}
+                              className="h-20 w-full rounded-lg border object-cover"
+                            />
+                          ) : (
+                            <div
+                              key={m.id}
+                              className="h-20 w-full rounded-lg border bg-black flex items-center justify-center"
+                            >
+                              <VideoIcon className="h-5 w-5 text-white/80" />
+                            </div>
+                          )
+                        )}
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+
+                <div className="flex gap-2 items-center">
+                  <Input
+                    value={commentDraft}
+                    onChange={(e) => setCommentDraft(e.target.value)}
+                    placeholder="Write a comment…"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") submitComment();
+                    }}
+                  />
+                  <Button onClick={submitComment} disabled={!commentDraft.trim()}>
+                    Post
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  {(activeThreadPost.commentsList ?? []).length === 0 ? (
+                    <div className="text-sm text-muted-foreground text-center py-6">No comments yet.</div>
+                  ) : (
+                    [...(activeThreadPost.commentsList ?? [])]
+                      .slice()
+                      .reverse()
+                      .map((c) => (
+                        <div key={c.id} className="border rounded-xl p-3 bg-background">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-semibold truncate">{c.authorName}</p>
+                            <p className="text-xs text-muted-foreground shrink-0">{formatTimeAgo(c.createdAt)}</p>
+                          </div>
+                          <p className="text-sm mt-2 whitespace-pre-wrap leading-relaxed">{c.text}</p>
+                        </div>
+                      ))
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="text-sm text-muted-foreground">Thread not found.</div>
+            )}
+          </div>
+
+          <div className="p-4 border-t flex justify-end">
+            <Button variant="outline" onClick={() => setOpenThread(false)}>
+              Close
             </Button>
-
-            <div className="pt-6 text-xs text-muted-foreground space-y-1">
-              <div>© {new Date().getFullYear()} AfroConnect. Built with ❤️ for the African diaspora.</div>
-              <div>
-                Powered by{" "}
-                <a className="underline" href="https://caffeine.ai" target="_blank" rel="noreferrer">
-                  caffeine.ai
-                </a>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Keep a minimal global footer for logged-in users */}
-      {!isGuest && (
-        <div className="text-center text-xs text-muted-foreground py-10">
-          © {new Date().getFullYear()} AfroConnect. Built with ❤️ for the African diaspora.
-        </div>
-      )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -742,13 +736,4 @@ function formatTimeAgo(ts: number) {
   if (hrs < 24) return `${hrs}h`;
   const days = Math.floor(hrs / 24);
   return `${days}d`;
-}
-
-function readAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.readAsDataURL(file);
-  });
 }

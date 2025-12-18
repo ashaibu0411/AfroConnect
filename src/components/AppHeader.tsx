@@ -2,7 +2,7 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Bell, MessageCircle, Menu, ChevronDown, MapPin } from "lucide-react";
+import { Bell, MessageCircle, Menu, ChevronDown, MapPin, Search } from "lucide-react";
 
 type Props = {
   locationLabel: string;
@@ -16,6 +16,7 @@ type Props = {
   onOpenLocation: () => void;
   onOpenNotifications: () => void;
   onGoMessages: () => void;
+  onOpenSearch: () => void;
 
   onLogin: () => void;
   onOpenMenu: () => void;
@@ -40,6 +41,7 @@ export default function AppHeader({
   onOpenLocation,
   onOpenNotifications,
   onGoMessages,
+  onOpenSearch,
   onLogin,
   onOpenMenu,
 }: Props) {
@@ -57,30 +59,22 @@ export default function AppHeader({
             <MapPin className="h-4 w-4" />
           </span>
 
-          <span className="font-semibold text-sm max-w-[220px] truncate">
-            {locationLabel}
-          </span>
+          <span className="font-semibold text-sm max-w-[220px] truncate">{locationLabel}</span>
 
           <ChevronDown className="h-4 w-4 text-muted-foreground" />
         </button>
 
         {/* RIGHT */}
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            title="Notifications"
-            onClick={onOpenNotifications}
-          >
+          <Button variant="ghost" size="icon" title="Search" onClick={onOpenSearch}>
+            <Search className="h-5 w-5" />
+          </Button>
+
+          <Button variant="ghost" size="icon" title="Notifications" onClick={onOpenNotifications}>
             <Bell className="h-5 w-5" />
           </Button>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            title="Messages"
-            onClick={onGoMessages}
-          >
+          <Button variant="ghost" size="icon" title="Messages" onClick={onGoMessages}>
             <MessageCircle className="h-5 w-5" />
           </Button>
 
@@ -94,31 +88,17 @@ export default function AppHeader({
                 {isLoggingIn ? "Connecting..." : "Login"}
               </Button>
 
-              {/* Hamburger visible for guests */}
-              <Button
-                variant="outline"
-                size="icon"
-                title="Menu"
-                onClick={onOpenMenu}
-              >
+              <Button variant="outline" size="icon" title="Menu" onClick={onOpenMenu}>
                 <Menu className="h-5 w-5" />
               </Button>
             </>
           ) : (
-            <>
-              {/* Logged in: avatar acts as the menu button */}
-              <button
-                type="button"
-                onClick={onOpenMenu}
-                className="rounded-full"
-                title="Open menu"
-              >
-                <Avatar className="h-9 w-9">
-                  {avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
-                  <AvatarFallback>{initials(displayName)}</AvatarFallback>
-                </Avatar>
-              </button>
-            </>
+            <button type="button" onClick={onOpenMenu} className="rounded-full" title="Open menu">
+              <Avatar className="h-9 w-9">
+                {avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
+                <AvatarFallback>{initials(displayName)}</AvatarFallback>
+              </Avatar>
+            </button>
           )}
         </div>
       </div>

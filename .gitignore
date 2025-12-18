@@ -8,3 +8,4 @@ android/.gradle
 android/.idea
 ios/Pods
 ios/build
+.vercel
