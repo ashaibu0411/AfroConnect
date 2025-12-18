@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { HelpCircle, ShoppingBag, CalendarDays, FileText } from "lucide-react";
@@ -20,9 +21,7 @@ export default function CreateMenuSheet({
           <SheetHeader>
             <SheetTitle>Create</SheetTitle>
           </SheetHeader>
-          <p className="text-xs text-muted-foreground mt-1">
-            Choose what you want to publish.
-          </p>
+          <p className="text-xs text-muted-foreground mt-1">Choose what you want to publish.</p>
         </div>
 
         <div className="p-4 space-y-2">
@@ -70,7 +69,7 @@ function CreateRow({
 }: {
   title: string;
   desc: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   onClick: () => void;
 }) {
   return (
@@ -79,9 +78,7 @@ function CreateRow({
       onClick={onClick}
       className="w-full flex items-center gap-3 border rounded-2xl px-4 py-3 hover:bg-muted/50 transition text-left"
     >
-      <span className="h-10 w-10 rounded-2xl bg-muted flex items-center justify-center">
-        {icon}
-      </span>
+      <span className="h-10 w-10 rounded-2xl bg-muted flex items-center justify-center">{icon}</span>
       <span className="min-w-0">
         <div className="font-semibold">{title}</div>
         <div className="text-xs text-muted-foreground">{desc}</div>

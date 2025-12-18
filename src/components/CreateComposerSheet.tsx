@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,7 +19,6 @@ export type ComposerPayload = {
   kind: CreateKind;
   text: string;
   media: MediaItem[];
-  // Optional fields for Sell/Event (MVP: kept minimal)
   title?: string;
   price?: string;
   when?: string;
@@ -30,6 +29,7 @@ function uid() {
   return (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`) as string;
 }
 
+// MVP content-policy block
 function violatesPolicy(text: string) {
   const s = (text || "").toLowerCase();
   const blocked = [
@@ -50,10 +50,17 @@ function violatesPolicy(text: string) {
   return blocked.some((w) => s.includes(w));
 }
 
+function kindLabel(k: CreateKind) {
+  if (k === "ask") return "Ask";
+  if (k === "sell") return "Sell";
+  if (k === "event") return "Event";
+  return "Post";
+}
+
 export default function CreateComposerSheet({
   open,
   onOpenChange,
-  kind,
+  kind, // treated as initial kind
   communityLabel,
   canInteract,
   onRequireLogin,
@@ -68,6 +75,10 @@ export default function CreateComposerSheet({
   onSubmit: (payload: ComposerPayload) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const textRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // INTERNAL kind so you can switch tabs inside the composer
+  const [activeKind, setActiveKind] = useState<CreateKind>(kind);
 
   const [text, setText] = useState("");
   const [title, setTitle] = useState("");
@@ -76,15 +87,34 @@ export default function CreateComposerSheet({
   const [where, setWhere] = useState("");
   const [media, setMedia] = useState<MediaItem[]>([]);
 
-  const headline = useMemo(() => {
-    if (kind === "ask") return "Ask";
-    if (kind === "sell") return "Sell";
-    if (kind === "event") return "Event";
-    return "Post";
-  }, [kind]);
+  // When opened, sync initial kind + focus + keep fields
+  useEffect(() => {
+    if (!open) return;
+    setActiveKind(kind);
+    // focus after paint
+    const t = window.setTimeout(() => textRef.current?.focus(), 50);
+    return () => window.clearTimeout(t);
+  }, [open, kind]);
+
+  // When switching kinds, keep text/media, but clear type-specific fields
+  useEffect(() => {
+    if (activeKind === "sell") {
+      setWhen("");
+      setWhere("");
+    } else if (activeKind === "event") {
+      setPrice("");
+    } else {
+      // post/ask
+      setTitle("");
+      setPrice("");
+      setWhen("");
+      setWhere("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeKind]);
 
   const placeholder = useMemo(() => {
-    switch (kind) {
+    switch (activeKind) {
       case "ask":
         return `Ask your neighbors in ${communityLabel}… (be specific)`;
       case "sell":
@@ -94,12 +124,11 @@ export default function CreateComposerSheet({
       default:
         return `What’s happening in ${communityLabel}?`;
     }
-  }, [kind, communityLabel]);
+  }, [activeKind, communityLabel]);
 
-  const canPost = useMemo(() => {
+  const canPublish = useMemo(() => {
     if (!canInteract) return false;
-    const hasCore = text.trim().length > 0 || media.length > 0;
-    return hasCore;
+    return text.trim().length > 0 || media.length > 0;
   }, [canInteract, text, media.length]);
 
   async function handlePickFiles(files: FileList | null) {
@@ -138,7 +167,12 @@ export default function CreateComposerSheet({
     });
   }
 
-  function resetAndClose() {
+  function close() {
+    onOpenChange(false);
+  }
+
+  function resetAllAndClose() {
+    // Full reset (Nextdoor-like): close composer after publish/cancel
     setText("");
     setTitle("");
     setPrice("");
@@ -148,7 +182,7 @@ export default function CreateComposerSheet({
     onOpenChange(false);
   }
 
-  function submit() {
+  function publish() {
     if (!canInteract) {
       onRequireLogin();
       return;
@@ -161,7 +195,7 @@ export default function CreateComposerSheet({
     }
 
     onSubmit({
-      kind,
+      kind: activeKind,
       text: proposed,
       media,
       title: title.trim() || undefined,
@@ -171,37 +205,51 @@ export default function CreateComposerSheet({
     });
 
     toast.success("Posted.");
-    resetAndClose();
+    resetAllAndClose();
   }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      {/* Full-screen feel on mobile */}
-      <SheetContent side="right" className="w-full sm:max-w-[520px] p-0">
+      {/* Full-screen on mobile */}
+      <SheetContent side="right" className="w-full sm:max-w-[560px] p-0">
         <div className="h-screen flex flex-col">
-          {/* Header */}
-          <div className="p-4 border-b flex items-center justify-between">
-            <div className="min-w-0">
-              <div className="text-lg font-semibold">{headline}</div>
-              <div className="text-xs text-muted-foreground truncate">{communityLabel}</div>
+          {/* TOP BAR (sticky) */}
+          <div className="px-4 py-3 border-b flex items-center gap-3">
+            <Button variant="ghost" size="sm" onClick={close}>
+              Cancel
+            </Button>
+
+            <div className="min-w-0 flex-1 text-center">
+              <div className="text-sm font-semibold leading-tight">Create</div>
+              <div className="text-[11px] text-muted-foreground truncate">{communityLabel}</div>
             </div>
 
-            <Button variant="ghost" size="icon" onClick={resetAndClose} title="Close">
-              <X className="h-5 w-5" />
+            <Button size="sm" onClick={publish} disabled={!canPublish}>
+              Publish
             </Button>
           </div>
 
-          {/* Body */}
-          <div className="flex-1 overflow-auto p-4 space-y-3">
-            {/* Minimal extra fields for Sell/Event (MVP) */}
-            {kind === "sell" && (
+          {/* TYPE TABS (inside composer) */}
+          <div className="px-4 pt-4">
+            <div className="grid grid-cols-4 gap-2">
+              <KindTab active={activeKind === "post"} label="Post" onClick={() => setActiveKind("post")} />
+              <KindTab active={activeKind === "ask"} label="Ask" onClick={() => setActiveKind("ask")} />
+              <KindTab active={activeKind === "sell"} label="Sell" onClick={() => setActiveKind("sell")} />
+              <KindTab active={activeKind === "event"} label="Event" onClick={() => setActiveKind("event")} />
+            </div>
+          </div>
+
+          {/* BODY */}
+          <div className="flex-1 overflow-auto px-4 pb-28 pt-4 space-y-3">
+            {/* Type-specific compact fields */}
+            {activeKind === "sell" && (
               <div className="grid grid-cols-1 gap-2">
                 <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Item title (optional)" />
                 <Input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Price (optional)" />
               </div>
             )}
 
-            {kind === "event" && (
+            {activeKind === "event" && (
               <div className="grid grid-cols-1 gap-2">
                 <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Event title (optional)" />
                 <Input value={when} onChange={(e) => setWhen(e.target.value)} placeholder="When (optional)" />
@@ -210,15 +258,16 @@ export default function CreateComposerSheet({
             )}
 
             <Textarea
+              ref={textRef}
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder={placeholder}
-              className="min-h-[160px]"
+              className="min-h-[180px]"
               disabled={!canInteract}
             />
 
-            {/* Media */}
-            <div className="flex items-center gap-2">
+            {/* Media controls */}
+            <div className="flex flex-wrap items-center gap-2">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -228,12 +277,7 @@ export default function CreateComposerSheet({
                 onChange={(e) => handlePickFiles(e.target.files)}
               />
 
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={!canInteract}
-              >
+              <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={!canInteract}>
                 <ImageIcon className="h-4 w-4 mr-2" />
                 Add media
               </Button>
@@ -243,8 +287,11 @@ export default function CreateComposerSheet({
                   Login
                 </Button>
               )}
+
+              <div className="text-xs text-muted-foreground ml-auto">{kindLabel(activeKind)}</div>
             </div>
 
+            {/* Media grid */}
             {media.length > 0 && (
               <div className="grid grid-cols-2 gap-3">
                 {media.map((m) => (
@@ -282,18 +329,44 @@ export default function CreateComposerSheet({
             </div>
           </div>
 
-          {/* Footer */}
-          <div className="p-4 border-t flex items-center justify-end gap-2">
-            <Button variant="outline" onClick={resetAndClose}>
-              Cancel
-            </Button>
-            <Button onClick={submit} disabled={!canPost}>
-              Publish
-            </Button>
+          {/* BOTTOM ACTION BAR (sticky, modern) */}
+          <div className="px-4 py-3 border-t bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+            <div className="flex items-center justify-between gap-2">
+              <Button variant="ghost" size="sm" onClick={resetAllAndClose}>
+                Discard
+              </Button>
+
+              <Button onClick={publish} disabled={!canPublish}>
+                Publish
+              </Button>
+            </div>
           </div>
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function KindTab({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "px-3 py-2 rounded-full text-sm border transition",
+        active ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted/50",
+      ].join(" ")}
+    >
+      {label}
+    </button>
   );
 }
 

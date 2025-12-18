@@ -152,7 +152,7 @@ export default function HomeFeed({ userLocation }: Props) {
     }));
   });
 
-  // Option 2: Local first; extend global when no results
+  // Local first; extend global when no local results (when searching)
   const [feedScope, setFeedScope] = useState<FeedScope>("local");
   const [feedSearch, setFeedSearch] = useState("");
 
@@ -171,7 +171,7 @@ export default function HomeFeed({ userLocation }: Props) {
   const [threadPostId, setThreadPostId] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
 
-  // NEW: FAB → create menu → full-screen composer
+  // FAB → create menu → full-screen composer
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerKind, setComposerKind] = useState<CreateKind>("post");
@@ -322,7 +322,7 @@ export default function HomeFeed({ userLocation }: Props) {
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 space-y-6 relative">
-      {/* GUEST TOP CARD (kept) */}
+      {/* GUEST TOP CARD */}
       {isGuest && (
         <Card className="border bg-white/70 backdrop-blur shadow-sm rounded-2xl">
           <CardContent className="p-8 text-center space-y-6">
@@ -353,7 +353,7 @@ export default function HomeFeed({ userLocation }: Props) {
         </Card>
       )}
 
-      {/* COMMUNITY FEED (with toggles + density) */}
+      {/* COMMUNITY FEED (toggles + density) */}
       <Card className="border shadow-sm rounded-2xl">
         <CardHeader className="space-y-3">
           <div className="flex flex-row items-center justify-between">
@@ -457,21 +457,24 @@ export default function HomeFeed({ userLocation }: Props) {
               const latest = (p.commentsList ?? []).slice(density === "compact" ? -1 : -2);
 
               return (
-                <Card key={p.id} className="border rounded-2xl">
-                  <CardContent className={density === "compact" ? "p-3 space-y-2" : "p-5 space-y-3"}>
+                <Card key={p.id} className="border rounded-2xl overflow-hidden">
+                  <CardContent className={density === "compact" ? "p-3" : "p-5"}>
                     {/* Header */}
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-semibold">{p.authorName}</p>
+                      <div className="flex items-start gap-3 min-w-0">
+                        <AvatarCircle name={p.authorName} />
 
-                          <span className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full bg-muted text-muted-foreground">
-                            {chip.icon}
-                            {chip.label}
-                          </span>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-semibold truncate">{p.authorName}</p>
 
-                          <span className="text-xs text-muted-foreground">·</span>
-                          <p className="text-xs text-muted-foreground">
+                            <span className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full bg-muted text-muted-foreground">
+                              {chip.icon}
+                              {chip.label}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-muted-foreground truncate">
                             {p.communityLabel} · {formatTimeAgo(p.createdAt)}
                           </p>
                         </div>
@@ -496,18 +499,26 @@ export default function HomeFeed({ userLocation }: Props) {
                       </div>
                     </div>
 
-                    {/* Optional title line (Sell/Event) */}
-                    {p.title ? <div className="font-semibold">{p.title}</div> : null}
-                    {p.price ? <div className="text-sm text-muted-foreground">Price: {p.price}</div> : null}
-                    {p.when ? <div className="text-sm text-muted-foreground">When: {p.when}</div> : null}
-                    {p.where ? <div className="text-sm text-muted-foreground">Where: {p.where}</div> : null}
+                    {/* Type-specific “meta strip” (Sell/Event) */}
+                    {(p.title || p.price || p.when || p.where) && (
+                      <div className="mt-3 rounded-xl border bg-muted/20 p-3 space-y-1">
+                        {p.title ? <div className="font-semibold">{p.title}</div> : null}
+                        {p.price ? <div className="text-sm text-muted-foreground">Price: {p.price}</div> : null}
+                        {p.when ? <div className="text-sm text-muted-foreground">When: {p.when}</div> : null}
+                        {p.where ? <div className="text-sm text-muted-foreground">Where: {p.where}</div> : null}
+                      </div>
+                    )}
 
                     {/* Body */}
-                    {p.text ? <p className="text-sm whitespace-pre-wrap leading-relaxed">{p.text}</p> : null}
+                    {p.text ? (
+                      <p className={["mt-3 whitespace-pre-wrap leading-relaxed", "text-sm"].join(" ")}>
+                        {p.text}
+                      </p>
+                    ) : null}
 
                     {/* Media */}
                     {p.media.length > 0 && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className={["mt-3 grid gap-3", p.media.length > 1 ? "grid-cols-2" : "grid-cols-1"].join(" ")}>
                         {p.media.map((m) =>
                           m.kind === "image" ? (
                             <img
@@ -534,19 +545,42 @@ export default function HomeFeed({ userLocation }: Props) {
                       </div>
                     )}
 
-                    {/* Nextdoor-style counts */}
-                    <div className="flex items-center gap-6 text-sm text-muted-foreground">
+                    {/* Counts row */}
+                    <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
                       <span className="inline-flex items-center gap-2">
                         <Heart className="h-4 w-4" /> {p.likes}
                       </span>
-                      <span className="inline-flex items-center gap-2">
+
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-2 hover:underline underline-offset-4"
+                        onClick={() => openComments(p.id)}
+                      >
                         <MessageCircle className="h-4 w-4" /> {commentCount}
-                      </span>
+                      </button>
+                    </div>
+
+                    {/* Engagement row */}
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <Button variant="outline" className="w-full" disabled={!canInteract} onClick={() => toggleLike(p.id)}>
+                        <Heart className="h-4 w-4 mr-2" />
+                        Like
+                      </Button>
+
+                      <Button variant="outline" className="w-full" disabled={!canInteract} onClick={() => openComments(p.id)}>
+                        <MessageCircle className="h-4 w-4 mr-2" />
+                        Comment
+                      </Button>
+
+                      <Button variant="outline" className="w-full" disabled={!canInteract} onClick={() => sharePost(p)}>
+                        <Send className="h-4 w-4 mr-2" />
+                        Share
+                      </Button>
                     </div>
 
                     {/* Inline latest comments */}
                     {latest.length > 0 && (
-                      <div className="border rounded-2xl bg-muted/25 p-3 space-y-2">
+                      <div className="mt-3 border rounded-2xl bg-muted/25 p-3 space-y-2">
                         {latest.map((c) => (
                           <div key={c.id} className="text-sm">
                             <span className="font-semibold">{c.authorName}</span>{" "}
@@ -567,29 +601,13 @@ export default function HomeFeed({ userLocation }: Props) {
                       </div>
                     )}
 
-                    {/* Actions */}
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      <Button variant="outline" size="sm" disabled={!canInteract} onClick={() => toggleLike(p.id)}>
-                        <Heart className="h-4 w-4 mr-2" />
-                        Like
-                      </Button>
-
-                      <Button variant="outline" size="sm" disabled={!canInteract} onClick={() => openComments(p.id)}>
-                        <MessageCircle className="h-4 w-4 mr-2" />
-                        Comments
-                      </Button>
-
-                      <Button variant="outline" size="sm" disabled={!canInteract} onClick={() => sharePost(p)}>
-                        <Send className="h-4 w-4 mr-2" />
-                        Share
-                      </Button>
-
-                      {!canInteract && (
+                    {!canInteract && (
+                      <div className="mt-3">
                         <Button size="sm" onClick={login}>
                           Login to interact
                         </Button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               );
@@ -656,10 +674,7 @@ export default function HomeFeed({ userLocation }: Props) {
                               className="h-20 w-full rounded-lg border object-cover"
                             />
                           ) : (
-                            <div
-                              key={m.id}
-                              className="h-20 w-full rounded-lg border bg-black flex items-center justify-center"
-                            >
+                            <div key={m.id} className="h-20 w-full rounded-lg border bg-black flex items-center justify-center">
                               <VideoIcon className="h-5 w-5 text-white/80" />
                             </div>
                           )
@@ -723,6 +738,24 @@ function Feature({ icon, label }: { icon: React.ReactNode; label: string }) {
     <div className="flex items-center gap-3 text-sm">
       <span className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">{icon}</span>
       <span className="font-medium">{label}</span>
+    </div>
+  );
+}
+
+function initials(name: string) {
+  return (name || "U")
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+function AvatarCircle({ name }: { name: string }) {
+  return (
+    <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center font-semibold text-sm shrink-0">
+      {initials(name)}
     </div>
   );
 }
