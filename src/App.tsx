@@ -17,13 +17,12 @@ import ProfilePage from "./components/ProfilePage";
 import SettingsPage from "./components/SettingsPage";
 import EventsPage from "./components/EventsPage";
 import AppSearchSheet from "./components/AppSearchSheet";
-
 import AuthSheet from "./components/AuthSheet";
 
 import Logo from "./assets/afroconnect-logo.png";
 
 import { UserLocationProvider, useUserLocation } from "@/contexts/UserLocationContext";
-import { useInternetIdentity } from "./hooks/useInternetIdentity";
+import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { COMMUNITIES, DEFAULT_COMMUNITY_ID } from "@/lib/communities";
 
 type TabId = TabRoute;
@@ -34,7 +33,6 @@ const LS_AREA_KEY_PREFIX = "afroconnect.areaId.";
 const LS_PROFILE = "afroconnect.profile";
 const LS_AVATAR_URL = "afroconnect.avatarUrl";
 
-// Custom event so ProfilePage can tell AppHeader to refresh immediately
 export const PROFILE_UPDATED_EVENT = "afroconnect.profileUpdated";
 
 type StoredProfile = {
@@ -64,7 +62,7 @@ function readProfile(): StoredProfile {
 }
 
 function AppInner() {
-  const { identity, loginStatus, clear, setAuthed } = useInternetIdentity();
+  const { identity, loginStatus, beginAuth, clear } = useInternetIdentity();
   const isLoggedIn = !!identity && loginStatus === "success";
   const isLoggingIn = loginStatus === "logging-in";
 
@@ -79,9 +77,8 @@ function AppInner() {
   const [locationModalOpen, setLocationModalOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
-  // NEW: Auth sheet
+  // Auth sheet open/close
   const [authOpen, setAuthOpen] = useState(false);
-  const beginAuth = () => setAuthOpen(true);
 
   // Location state used by header/modal
   const [communityId, setCommunityId] = useState(() => getSavedCommunityId());
@@ -107,7 +104,7 @@ function AppInner() {
   }, [community.name, areaName]);
 
   // =========
-  // PROFILE (fixes Guest sticking)
+  // PROFILE (kept)
   // =========
   const [profileVersion, setProfileVersion] = useState(0);
 
@@ -140,6 +137,12 @@ function AppInner() {
   const avatarUrl = useMemo(() => {
     return profile.avatarUrl || localStorage.getItem(LS_AVATAR_URL) || undefined;
   }, [profile.avatarUrl, profileVersion]);
+
+  // One place to open auth
+  const openAuth = () => {
+    setAuthOpen(true);
+    beginAuth(); // keeps your hook state consistent (optional but recommended)
+  };
 
   // Gate: first-login location confirmation
   if (isLoggedIn && !location) {
@@ -207,7 +210,7 @@ function AppInner() {
         return <MessagesSection initialConversationTitle={activeConversationTitle ?? undefined} />;
 
       case "events":
-        return <EventsPage communityLabel={locationLabel} isLoggedIn={isLoggedIn} onLogin={beginAuth} />;
+        return <EventsPage communityLabel={locationLabel} isLoggedIn={isLoggedIn} onLogin={openAuth} />;
 
       case "profile":
         return <ProfilePage communityLabel={locationLabel} />;
@@ -248,8 +251,17 @@ function AppInner() {
         onOpenNotifications={() => setNotificationsOpen(true)}
         onGoMessages={() => setActiveTab("messages")}
         onOpenSearch={() => setSearchOpen(true)}
-        onLogin={beginAuth}
+        onLogin={openAuth}
         onOpenMenu={() => setMenuOpen(true)}
+      />
+
+      <AuthSheet
+        open={authOpen}
+        onOpenChange={(v) => {
+          setAuthOpen(v);
+          // optional: if closed manually, you may want to clear "logging-in" state
+          // but only if your hook sets it when beginAuth is called
+        }}
       />
 
       <LocationConfirmModal
@@ -280,19 +292,10 @@ function AppInner() {
         onOpenChange={setSearchOpen}
         communityLabel={locationLabel}
         isLoggedIn={isLoggedIn}
-        onLogin={beginAuth}
+        onLogin={openAuth}
         onNavigate={(tab) => {
           setSearchOpen(false);
           setActiveTab(tab);
-        }}
-      />
-
-      {/* NEW: Create account / Sign in */}
-      <AuthSheet
-        open={authOpen}
-        onOpenChange={setAuthOpen}
-        onAuthed={(identifier) => {
-          setAuthed(identifier);
         }}
       />
 

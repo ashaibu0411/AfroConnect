@@ -19,7 +19,7 @@ if (document.readyState === "loading") {
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={queryClient}>
     <InternetIdentityProvider>
-      <SplashGate logoSrc={Logo} slogan="Connecting Africans Globally" durationMs={1000}>
+      <SplashGate logoSrc={Logo} slogan="Connecting Africans Globally" durationMs={5000}>
         <App />
       </SplashGate>
     </InternetIdentityProvider>
