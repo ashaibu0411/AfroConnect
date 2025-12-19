@@ -3,6 +3,9 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+console.log("SUPABASE URL present?", !!import.meta.env.VITE_SUPABASE_URL);
+console.log("SUPABASE KEY present?", !!import.meta.env.VITE_SUPABASE_ANON_KEY);
+
 
 // Create only if configured (prevents runtime crash on Vercel when envs are missing)
 export const supabase: SupabaseClient | null =
