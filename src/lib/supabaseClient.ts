@@ -1,14 +1,15 @@
 // src/lib/supabaseClient.ts
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
+// Create only if configured (prevents runtime crash on Vercel when envs are missing)
+export const supabase: SupabaseClient | null =
+  supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
+
 if (!supabaseUrl || !supabaseAnonKey) {
-  // This makes failures obvious during dev
   console.warn(
-    "[Supabase] Missing env vars. Make sure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY exist in .env.local"
+    "[Supabase] Missing env vars. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your Vercel Environment Variables (Production + Preview) and redeploy."
   );
 }
-
-export const supabase = createClient(supabaseUrl ?? "", supabaseAnonKey ?? "");

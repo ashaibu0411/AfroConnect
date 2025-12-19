@@ -1,5 +1,6 @@
 import ReactDOM from "react-dom/client";
 import { InternetIdentityProvider } from "./hooks/useInternetIdentity";
+import { AuthProvider } from "./hooks/useAuth";
 import { initEditor } from "./hooks/useEditor";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
@@ -18,10 +19,12 @@ if (document.readyState === "loading") {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={queryClient}>
-    <InternetIdentityProvider>
-      <SplashGate logoSrc={Logo} slogan="Connecting Africans Globally" durationMs={5000}>
-        <App />
-      </SplashGate>
-    </InternetIdentityProvider>
+    <AuthProvider>
+      <InternetIdentityProvider>
+        <SplashGate logoSrc={Logo} slogan="Connecting Africans Globally" durationMs={5000}>
+          <App />
+        </SplashGate>
+      </InternetIdentityProvider>
+    </AuthProvider>
   </QueryClientProvider>
 );
