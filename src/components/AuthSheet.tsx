@@ -4,26 +4,10 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-
-import { supabase } from "@/lib/supabaseClient";
-import { useInternetIdentity, type AuthUser } from "@/hooks/useInternetIdentity";
+import { useAuth } from "@/hooks/useAuth";
 
 type Mode = "login" | "signup";
 type Method = "email" | "phone";
-
-function mapSupabaseUserToAuthUser(u: any): AuthUser {
-  return {
-    id: u.id,
-    displayName:
-      (u.user_metadata?.display_name as string) ||
-      (u.user_metadata?.full_name as string) ||
-      (u.email as string) ||
-      (u.phone as string) ||
-      "User",
-    email: u.email ?? undefined,
-    phone: u.phone ?? undefined,
-  };
-}
 
 export default function AuthSheet({
   open,
@@ -32,12 +16,10 @@ export default function AuthSheet({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const { completeAuth } = useInternetIdentity();
+  const { status, signInWithEmail, signUpWithEmail, signInWithPhoneOtp, verifyPhoneOtp } = useAuth();
 
   const [mode, setMode] = useState<Mode>("login");
   const [method, setMethod] = useState<Method>("email");
-
-  const [loading, setLoading] = useState(false);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -46,121 +28,68 @@ export default function AuthSheet({
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
 
+  const loading = status === "loading";
+
   const title = useMemo(() => {
     if (mode === "signup") return "Create your AfroConnect account";
     return "Log in to AfroConnect";
   }, [mode]);
 
-  async function finalizeSession() {
-    // After sign-in/up, ensure we have a session + user
-    const { data, error } = await supabase.auth.getSession();
-    if (error) throw error;
-
-    const user = data.session?.user;
-    if (!user) throw new Error("No active session returned from Supabase.");
-
-    completeAuth(mapSupabaseUserToAuthUser(user));
-  }
-
   async function doEmail() {
     try {
-      if (!email.trim()) return toast.error("Enter your email.");
-      if (!password.trim()) return toast.error("Enter your password.");
+      const e = email.trim();
+      const p = password.trim();
 
-      setLoading(true);
+      if (!e) return toast.error("Enter your email.");
+      if (!p) return toast.error("Enter your password.");
 
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-        });
-        if (error) throw error;
-
-        // If email confirmation is ON, session may be null. We handle both cases.
-        const { data } = await supabase.auth.getSession();
-        if (data.session?.user) {
-          completeAuth(mapSupabaseUserToAuthUser(data.session.user));
-          toast.success("Account created and signed in.");
-          onOpenChange(false);
-        } else {
-          toast.success("Account created. Check your email to confirm, then login.");
-          onOpenChange(false);
-        }
+        await signUpWithEmail(e, p);
+        toast.success("Account created. If email confirmation is enabled, check your inbox.");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-        if (error) throw error;
-
-        await finalizeSession();
+        await signInWithEmail(e, p);
         toast.success("Logged in.");
-        onOpenChange(false);
       }
-    } catch (e: any) {
-      toast.error(e?.message ?? "Auth failed.");
-    } finally {
-      setLoading(false);
+
+      onOpenChange(false);
+    } catch (err: any) {
+      toast.error(err?.message ?? "Auth failed.");
     }
   }
 
   async function sendOtp() {
     try {
-      if (!phone.trim().startsWith("+")) {
+      const p = phone.trim();
+      if (!p.startsWith("+")) {
         return toast.error("Phone must be in E.164 format, e.g. +13035551234");
       }
 
-      setLoading(true);
-
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: phone.trim(),
-      });
-      if (error) throw error;
-
+      await signInWithPhoneOtp(p);
       setOtpSent(true);
       toast.success("OTP sent by SMS.");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Failed to send OTP.");
-    } finally {
-      setLoading(false);
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to send OTP.");
     }
   }
 
   async function confirmOtp() {
     try {
-      if (!otp.trim()) return toast.error("Enter the OTP code.");
+      const p = phone.trim();
+      const code = otp.trim();
 
-      setLoading(true);
+      if (!code) return toast.error("Enter the OTP code.");
+      if (!p.startsWith("+")) return toast.error("Phone must start with + (E.164).");
 
-      const { error } = await supabase.auth.verifyOtp({
-        phone: phone.trim(),
-        token: otp.trim(),
-        type: "sms",
-      });
-      if (error) throw error;
-
-      await finalizeSession();
+      await verifyPhoneOtp(p, code);
       toast.success("Logged in.");
       onOpenChange(false);
-    } catch (e: any) {
-      toast.error(e?.message ?? "OTP verification failed.");
-    } finally {
-      setLoading(false);
+    } catch (err: any) {
+      toast.error(err?.message ?? "OTP verification failed.");
     }
   }
 
   return (
-    <Sheet
-      open={open}
-      onOpenChange={(v) => {
-        onOpenChange(v);
-        if (!v) {
-          setOtp("");
-          setOtpSent(false);
-          setLoading(false);
-        }
-      }}
-    >
+    <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="p-0 sm:max-w-none">
         <div className="p-4 border-b">
           <div className="text-lg font-semibold">{title}</div>
@@ -234,13 +163,14 @@ export default function AuthSheet({
                 placeholder="Password"
                 type="password"
               />
+
               <Button onClick={doEmail} disabled={loading} className="w-full">
                 {loading ? "Working..." : mode === "signup" ? "Create account" : "Login"}
               </Button>
 
               {mode === "signup" && (
                 <div className="text-xs text-muted-foreground">
-                  If email confirmation is enabled in Supabase, you must confirm via email before login.
+                  If email confirmation is enabled in Supabase, you must confirm your email to fully sign in.
                 </div>
               )}
             </div>
@@ -249,7 +179,7 @@ export default function AuthSheet({
               <Input
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="Phone (E.164 format) e.g. +13035551234"
+                placeholder="Phone (E.164) e.g. +13035551234"
               />
 
               {!otpSent ? (
@@ -276,7 +206,7 @@ export default function AuthSheet({
               )}
 
               <div className="text-xs text-muted-foreground">
-                Phone login requires enabling Phone in Supabase Auth settings.
+                Phone login requires enabling Phone provider in Supabase Auth settings.
               </div>
             </div>
           )}

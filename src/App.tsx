@@ -1,5 +1,5 @@
-// src/App.tsx
 import { useEffect, useMemo, useState } from "react";
+import { Routes, Route } from "react-router-dom";
 
 import HomeFeed from "@/components/HomeFeed";
 import BusinessDirectory from "./components/BusinessDirectory";
@@ -22,8 +22,10 @@ import AuthSheet from "./components/AuthSheet";
 import Logo from "./assets/afroconnect-logo.png";
 
 import { UserLocationProvider, useUserLocation } from "@/contexts/UserLocationContext";
-import { useInternetIdentity } from "@/hooks/useInternetIdentity";
+import { useAuth } from "@/hooks/useAuth";
 import { COMMUNITIES, DEFAULT_COMMUNITY_ID } from "@/lib/communities";
+
+import AuthCallback from "@/pages/AuthCallback";
 
 type TabId = TabRoute;
 
@@ -62,25 +64,22 @@ function readProfile(): StoredProfile {
 }
 
 function AppInner() {
-  const { identity, loginStatus, beginAuth, clear } = useInternetIdentity();
-  const isLoggedIn = !!identity && loginStatus === "success";
-  const isLoggingIn = loginStatus === "logging-in";
+  const { user, status, signOut } = useAuth();
+  const isLoggedIn = !!user;
+  const isLoggingIn = status === "loading";
 
   const { location, setLocation } = useUserLocation();
 
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [activeConversationTitle, setActiveConversationTitle] = useState<string | null>(null);
 
-  // Header/menu state
   const [menuOpen, setMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
-  // Auth sheet open/close
   const [authOpen, setAuthOpen] = useState(false);
 
-  // Location state used by header/modal
   const [communityId, setCommunityId] = useState(() => getSavedCommunityId());
   const [areaId, setAreaId] = useState(() => getSavedAreaId(getSavedCommunityId()));
 
@@ -103,9 +102,6 @@ function AppInner() {
     return areaName ? `${community.name} · ${areaName}` : community.name;
   }, [community.name, areaName]);
 
-  // =========
-  // PROFILE (kept)
-  // =========
   const [profileVersion, setProfileVersion] = useState(0);
 
   useEffect(() => {
@@ -138,13 +134,6 @@ function AppInner() {
     return profile.avatarUrl || localStorage.getItem(LS_AVATAR_URL) || undefined;
   }, [profile.avatarUrl, profileVersion]);
 
-  // One place to open auth
-  const openAuth = () => {
-    setAuthOpen(true);
-    beginAuth(); // keeps your hook state consistent (optional but recommended)
-  };
-
-  // Gate: first-login location confirmation
   if (isLoggedIn && !location) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
@@ -210,7 +199,7 @@ function AppInner() {
         return <MessagesSection initialConversationTitle={activeConversationTitle ?? undefined} />;
 
       case "events":
-        return <EventsPage communityLabel={locationLabel} isLoggedIn={isLoggedIn} onLogin={openAuth} />;
+        return <EventsPage communityLabel={locationLabel} isLoggedIn={isLoggedIn} onLogin={() => setAuthOpen(true)} />;
 
       case "profile":
         return <ProfilePage communityLabel={locationLabel} />;
@@ -223,7 +212,7 @@ function AppInner() {
             displayName={displayName}
             onBack={() => setActiveTab("home")}
             onLogout={async () => {
-              await clear();
+              await signOut();
               setActiveTab("home");
             }}
           />
@@ -251,18 +240,11 @@ function AppInner() {
         onOpenNotifications={() => setNotificationsOpen(true)}
         onGoMessages={() => setActiveTab("messages")}
         onOpenSearch={() => setSearchOpen(true)}
-        onLogin={openAuth}
+        onLogin={() => setAuthOpen(true)}
         onOpenMenu={() => setMenuOpen(true)}
       />
 
-      <AuthSheet
-        open={authOpen}
-        onOpenChange={(v) => {
-          setAuthOpen(v);
-          // optional: if closed manually, you may want to clear "logging-in" state
-          // but only if your hook sets it when beginAuth is called
-        }}
-      />
+      <AuthSheet open={authOpen} onOpenChange={setAuthOpen} />
 
       <LocationConfirmModal
         open={locationModalOpen}
@@ -292,7 +274,7 @@ function AppInner() {
         onOpenChange={setSearchOpen}
         communityLabel={locationLabel}
         isLoggedIn={isLoggedIn}
-        onLogin={openAuth}
+        onLogin={() => setAuthOpen(true)}
         onNavigate={(tab) => {
           setSearchOpen(false);
           setActiveTab(tab);
@@ -307,7 +289,10 @@ function AppInner() {
 export default function App() {
   return (
     <UserLocationProvider>
-      <AppInner />
+      <Routes>
+        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/*" element={<AppInner />} />
+      </Routes>
     </UserLocationProvider>
   );
 }

@@ -1,5 +1,5 @@
-// src/hooks/useAuth.tsx
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -21,10 +21,16 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-function supabaseNotConfiguredError() {
-  return new Error(
-    "Supabase is not configured. Missing VITE_SUPABASE_URL and/or VITE_SUPABASE_ANON_KEY. Add them in Vercel Environment Variables and redeploy."
-  );
+function getSiteUrl() {
+  // Prefer explicit env var for Vercel stability; fallback to current origin.
+  const env = (import.meta as any)?.env;
+  const fromEnv = (env?.VITE_SITE_URL as string | undefined)?.trim();
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
+  return window.location.origin.replace(/\/$/, "");
+}
+
+function getAuthCallbackUrl() {
+  return `${getSiteUrl()}/auth/callback`;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -33,15 +39,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
 
   useEffect(() => {
-    // If supabase env vars are missing, do not crash the app.
-    if (!supabase) {
-      setUser(null);
-      setSession(null);
-      setStatus("error");
-      console.warn("[Auth] Supabase client is null (missing env vars). Auth is disabled until configured.");
-      return;
-    }
-
     let alive = true;
 
     (async () => {
@@ -72,48 +69,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const value = useMemo<AuthContextValue>(() => {
-    // If supabase is not configured, return safe methods that throw a clear error
-    if (!supabase) {
-      const fail = async () => {
-        throw supabaseNotConfiguredError();
-      };
-
-      return {
-        user: null,
-        session: null,
-        status,
-
-        signUpWithEmail: fail,
-        signInWithEmail: fail,
-        signInWithPhoneOtp: fail,
-        verifyPhoneOtp: fail,
-        signOut: fail,
-      };
-    }
-
-    return {
+  const value = useMemo<AuthContextValue>(
+    () => ({
       user,
       session,
       status,
 
       signUpWithEmail: async (email, password) => {
         setStatus("loading");
-        const { error } = await supabase.auth.signUp({ email, password });
+
+        const emailRedirectTo = getAuthCallbackUrl();
+
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo,
+          },
+        });
+
         if (error) {
           console.error("[Auth] signUp error:", error);
           setStatus("error");
           throw error;
         }
 
-        // Supabase may require email confirmation depending on settings
-        const { data, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) {
-          console.error("[Auth] getSession after signUp error:", sessionError);
-          setStatus("error");
-          throw sessionError;
-        }
-
+        // If confirmation is OFF, user may be signed in immediately.
+        const { data } = await supabase.auth.getSession();
         setSession(data.session);
         setUser(data.session?.user ?? null);
         setStatus(data.session?.user ? "authenticated" : "unauthenticated");
@@ -127,18 +109,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setStatus("error");
           throw error;
         }
-        // onAuthStateChange will update state
+        // onAuthStateChange updates state
       },
 
       signInWithPhoneOtp: async (phoneE164) => {
         setStatus("loading");
-        const { error } = await supabase.auth.signInWithOtp({ phone: phoneE164 });
+
+        // Phone OTP does not typically use redirectTo, but we keep callback URL handy
+        // for future magic-link/OAuth additions.
+        const { error } = await supabase.auth.signInWithOtp({
+          phone: phoneE164,
+          options: {
+            // keep user creation enabled
+            shouldCreateUser: true,
+          },
+        });
+
         if (error) {
           console.error("[Auth] signInWithOtp error:", error);
           setStatus("error");
           throw error;
         }
-        // user still unauthenticated until verify OTP
+
         setStatus("unauthenticated");
       },
 
@@ -154,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setStatus("error");
           throw error;
         }
-        // onAuthStateChange will update state
+        // onAuthStateChange updates state
       },
 
       signOut: async () => {
@@ -165,15 +157,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setStatus("error");
           throw error;
         }
-        // onAuthStateChange will update state
+        // onAuthStateChange updates state
       },
-    };
-  }, [user, session, status]);
+    }),
+    [user, session, status]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth(): AuthContextValue {
+export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
   return ctx;
