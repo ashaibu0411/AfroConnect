@@ -65,7 +65,7 @@ function readProfile(): StoredProfile {
 
 function AppInner() {
   const { user, status, signOut } = useAuth();
-  const isLoggedIn = !!user;
+  const isLoggedIn = !!user && status === "authenticated";
   const isLoggingIn = status === "loading";
 
   const { location, setLocation } = useUserLocation();
@@ -134,6 +134,9 @@ function AppInner() {
     return profile.avatarUrl || localStorage.getItem(LS_AVATAR_URL) || undefined;
   }, [profile.avatarUrl, profileVersion]);
 
+  // helper: open auth anywhere
+  const requireLogin = () => setAuthOpen(true);
+
   if (isLoggedIn && !location) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
@@ -167,7 +170,7 @@ function AppInner() {
   const renderContent = () => {
     switch (activeTab) {
       case "home":
-        return <HomeFeed userLocation={location ?? undefined} />;
+        return <HomeFeed userLocation={location ?? undefined} onRequireLogin={requireLogin} />;
 
       case "marketplace":
         return (
@@ -199,7 +202,7 @@ function AppInner() {
         return <MessagesSection initialConversationTitle={activeConversationTitle ?? undefined} />;
 
       case "events":
-        return <EventsPage communityLabel={locationLabel} isLoggedIn={isLoggedIn} onLogin={() => setAuthOpen(true)} />;
+        return <EventsPage communityLabel={locationLabel} isLoggedIn={isLoggedIn} onLogin={requireLogin} />;
 
       case "profile":
         return <ProfilePage communityLabel={locationLabel} />;
@@ -219,7 +222,7 @@ function AppInner() {
         );
 
       default:
-        return <HomeFeed userLocation={location ?? undefined} />;
+        return <HomeFeed userLocation={location ?? undefined} onRequireLogin={requireLogin} />;
     }
   };
 
@@ -240,7 +243,7 @@ function AppInner() {
         onOpenNotifications={() => setNotificationsOpen(true)}
         onGoMessages={() => setActiveTab("messages")}
         onOpenSearch={() => setSearchOpen(true)}
-        onLogin={() => setAuthOpen(true)}
+        onLogin={requireLogin}
         onOpenMenu={() => setMenuOpen(true)}
       />
 
@@ -274,7 +277,7 @@ function AppInner() {
         onOpenChange={setSearchOpen}
         communityLabel={locationLabel}
         isLoggedIn={isLoggedIn}
-        onLogin={() => setAuthOpen(true)}
+        onLogin={requireLogin}
         onNavigate={(tab) => {
           setSearchOpen(false);
           setActiveTab(tab);

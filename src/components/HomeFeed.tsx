@@ -23,16 +23,17 @@ import {
   ShoppingBag,
   CalendarDays,
 } from "lucide-react";
-import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 
 import CreateMenuSheet, { CreateKind } from "@/components/CreateMenuSheet";
 import CreateComposerSheet, { ComposerPayload } from "@/components/CreateComposerSheet";
+import { useAuth } from "@/hooks/useAuth";
 
 type Props = {
   userLocation?: {
     communityId?: string;
     areaId?: string;
   };
+  onRequireLogin?: () => void;
 };
 
 type MediaItem = {
@@ -132,33 +133,16 @@ async function shareTextOrUrl(payload: { title?: string; text?: string; url?: st
 type FeedScope = "local" | "global";
 type FeedDensity = "comfortable" | "compact";
 
-function ChipButton({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean;
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        "px-4 py-1.5 rounded-full text-sm border transition whitespace-nowrap",
-        active ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted/50",
-      ].join(" ")}
-    >
-      {children}
-    </button>
-  );
-}
+export default function HomeFeed({ userLocation, onRequireLogin }: Props) {
+  const { user, status } = useAuth();
 
-export default function HomeFeed({ userLocation }: Props) {
-  const { identity, login, loginStatus } = useInternetIdentity();
-  const isLoggedIn = !!identity && loginStatus === "success";
+  const isLoggedIn = !!user && status === "authenticated";
   const canInteract = isLoggedIn;
+
+  const requestLogin = () => {
+    if (onRequireLogin) onRequireLogin();
+    else toast.info("Login is required.");
+  };
 
   const communityLabel = useMemo(() => {
     return getCommunityLabelFallback();
@@ -198,7 +182,6 @@ export default function HomeFeed({ userLocation }: Props) {
     savePosts(posts);
   }, [posts]);
 
-  const isGuest = !isLoggedIn;
   const currentUserName = useMemo(() => readDisplayName(), [isLoggedIn]);
 
   const activeThreadPost = useMemo(() => {
@@ -223,20 +206,14 @@ export default function HomeFeed({ userLocation }: Props) {
   }, [posts, feedSearch, feedScope, communityLabel]);
 
   function openComments(postId: string) {
-    if (!canInteract) {
-      login();
-      return;
-    }
+    if (!canInteract) return requestLogin();
     setThreadPostId(postId);
     setCommentDraft("");
     setOpenThread(true);
   }
 
   function submitComment() {
-    if (!canInteract) {
-      login();
-      return;
-    }
+    if (!canInteract) return requestLogin();
     if (!threadPostId) return;
     const txt = commentDraft.trim();
     if (!txt) return;
@@ -260,10 +237,7 @@ export default function HomeFeed({ userLocation }: Props) {
   }
 
   function toggleLike(postId: string) {
-    if (!canInteract) {
-      login();
-      return;
-    }
+    if (!canInteract) return requestLogin();
     setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, likes: p.likes + 1 } : p)));
   }
 
@@ -274,10 +248,7 @@ export default function HomeFeed({ userLocation }: Props) {
   }
 
   async function sharePost(p: PostItem) {
-    if (!canInteract) {
-      login();
-      return;
-    }
+    if (!canInteract) return requestLogin();
     const preview = (p.text || "").slice(0, 180);
     await shareTextOrUrl({
       title: `AfroConnect · ${p.communityLabel}`,
@@ -300,10 +271,7 @@ export default function HomeFeed({ userLocation }: Props) {
   }
 
   function onFabClick() {
-    if (!canInteract) {
-      login();
-      return;
-    }
+    if (!canInteract) return requestLogin();
     setCreateMenuOpen(true);
   }
 
@@ -336,8 +304,11 @@ export default function HomeFeed({ userLocation }: Props) {
     setPosts((prev) => [newPost, ...prev]);
   }
 
+  const isGuest = !isLoggedIn;
+
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 space-y-6 relative">
+      {/* GUEST TOP CARD */}
       {isGuest && (
         <Card className="border bg-white/70 backdrop-blur shadow-sm rounded-2xl">
           <CardContent className="p-8 text-center space-y-6">
@@ -360,7 +331,7 @@ export default function HomeFeed({ userLocation }: Props) {
               Current community: <strong>{communityLabel}</strong>
             </p>
 
-            <Button onClick={login} className="bg-gradient-to-r from-orange-600 to-green-600 hover:opacity-90">
+            <Button onClick={requestLogin} className="bg-gradient-to-r from-orange-600 to-green-600 hover:opacity-90">
               <LogIn className="h-4 w-4 mr-2" />
               Login to post
             </Button>
@@ -368,6 +339,7 @@ export default function HomeFeed({ userLocation }: Props) {
         </Card>
       )}
 
+      {/* COMMUNITY FEED */}
       <Card className="border shadow-sm rounded-2xl">
         <CardHeader className="space-y-3">
           <div className="flex flex-row items-center justify-between">
@@ -378,40 +350,74 @@ export default function HomeFeed({ userLocation }: Props) {
             <span className="text-sm text-muted-foreground">{communityLabel}</span>
           </div>
 
-          {/* STICKY FILTER BAR */}
-          <div className="sticky top-14 z-30 -mx-6 px-6 py-3 bg-background/90 backdrop-blur border-b">
-            {/* One-line chips */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              <ChipButton active={feedScope === "local"} onClick={() => setFeedScope("local")}>
-                Local
-              </ChipButton>
-              <ChipButton active={feedScope === "global"} onClick={() => setFeedScope("global")}>
-                Global
-              </ChipButton>
-              <ChipButton active={density === "comfortable"} onClick={() => setDensity("comfortable")}>
-                Comfortable
-              </ChipButton>
-              <ChipButton active={density === "compact"} onClick={() => setDensity("compact")}>
-                Compact
-              </ChipButton>
-            </div>
+          {/* ONE LINE: Local/Global/Comfortable/Compact */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setFeedScope("local")}
+              className={[
+                "px-4 py-1.5 rounded-full text-sm border transition",
+                feedScope === "local"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background hover:bg-muted/50",
+              ].join(" ")}
+            >
+              Local
+            </button>
+            <button
+              type="button"
+              onClick={() => setFeedScope("global")}
+              className={[
+                "px-4 py-1.5 rounded-full text-sm border transition",
+                feedScope === "global"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background hover:bg-muted/50",
+              ].join(" ")}
+            >
+              Global
+            </button>
 
-            {/* Search BELOW chips */}
-            <div className="mt-2">
-              <Input
-                value={feedSearch}
-                onChange={(e) => setFeedSearch(e.target.value)}
-                placeholder={feedScope === "local" ? "Search local posts…" : "Search global posts…"}
-                className="w-full"
-              />
-            </div>
+            <div className="w-px h-6 bg-border mx-1 hidden sm:block" />
 
-            {feedScope === "local" && feedSearch.trim() ? (
-              <div className="text-xs text-muted-foreground mt-2">
-                Local search first. If nothing is found locally, AfroConnect extends to global automatically.
-              </div>
-            ) : null}
+            <button
+              type="button"
+              onClick={() => setDensity("comfortable")}
+              className={[
+                "px-4 py-1.5 rounded-full text-sm border transition",
+                density === "comfortable"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background hover:bg-muted/50",
+              ].join(" ")}
+            >
+              Comfortable
+            </button>
+            <button
+              type="button"
+              onClick={() => setDensity("compact")}
+              className={[
+                "px-4 py-1.5 rounded-full text-sm border transition",
+                density === "compact"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background hover:bg-muted/50",
+              ].join(" ")}
+            >
+              Compact
+            </button>
           </div>
+
+          {/* SEARCH BELOW */}
+          <Input
+            value={feedSearch}
+            onChange={(e) => setFeedSearch(e.target.value)}
+            placeholder={feedScope === "local" ? "Search local posts…" : "Search global posts…"}
+            className="w-full sm:max-w-[420px]"
+          />
+
+          {feedScope === "local" && feedSearch.trim() ? (
+            <div className="text-xs text-muted-foreground">
+              Local search first. If nothing is found locally, AfroConnect extends to global automatically.
+            </div>
+          ) : null}
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -422,7 +428,7 @@ export default function HomeFeed({ userLocation }: Props) {
                 {feedScope === "local" ? "Try another search, or switch to Global." : "Try another search term."}
               </p>
               {!isLoggedIn && (
-                <Button className="mt-4" onClick={login}>
+                <Button className="mt-4" onClick={requestLogin}>
                   Login to Post
                 </Button>
               )}
@@ -441,7 +447,6 @@ export default function HomeFeed({ userLocation }: Props) {
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-3 min-w-0">
                         <AvatarCircle name={p.authorName} />
-
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="text-sm font-semibold truncate">{p.authorName}</p>
@@ -538,12 +543,7 @@ export default function HomeFeed({ userLocation }: Props) {
                         Like
                       </Button>
 
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        disabled={!canInteract}
-                        onClick={() => openComments(p.id)}
-                      >
+                      <Button variant="outline" className="w-full" disabled={!canInteract} onClick={() => openComments(p.id)}>
                         <MessageCircle className="h-4 w-4 mr-2" />
                         Comment
                       </Button>
@@ -578,7 +578,7 @@ export default function HomeFeed({ userLocation }: Props) {
 
                     {!canInteract && (
                       <div className="mt-3">
-                        <Button size="sm" onClick={login}>
+                        <Button size="sm" onClick={requestLogin}>
                           Login to interact
                         </Button>
                       </div>
@@ -591,6 +591,7 @@ export default function HomeFeed({ userLocation }: Props) {
         </CardContent>
       </Card>
 
+      {/* FAB */}
       <button
         type="button"
         onClick={onFabClick}
@@ -608,7 +609,7 @@ export default function HomeFeed({ userLocation }: Props) {
         kind={composerKind}
         communityLabel={communityLabel}
         canInteract={canInteract}
-        onRequireLogin={login}
+        onRequireLogin={requestLogin}
         onSubmit={onComposerSubmit}
       />
 
@@ -645,10 +646,7 @@ export default function HomeFeed({ userLocation }: Props) {
                               className="h-20 w-full rounded-lg border object-cover"
                             />
                           ) : (
-                            <div
-                              key={m.id}
-                              className="h-20 w-full rounded-lg border bg-black flex items-center justify-center"
-                            >
+                            <div key={m.id} className="h-20 w-full rounded-lg border bg-black flex items-center justify-center">
                               <VideoIcon className="h-5 w-5 text-white/80" />
                             </div>
                           )
