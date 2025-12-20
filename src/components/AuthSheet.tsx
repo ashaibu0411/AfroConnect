@@ -1,221 +1,334 @@
 // src/components/AuthSheet.tsx
 import { useMemo, useState } from "react";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+
+type Props = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
 
 type Mode = "login" | "signup";
 type Method = "email" | "phone";
 
-export default function AuthSheet({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-}) {
-  const { status, signInWithEmail, signUpWithEmail, signInWithPhoneOtp, verifyPhoneOtp } = useAuth();
+function normalizePhone(phone: string) {
+  const p = phone.trim();
+  if (!p) return "";
+  // Keep it simple: user must provide E.164 like +1720...
+  return p.startsWith("+") ? p : `+${p}`;
+}
+
+function friendlyAuthError(err: unknown) {
+  const msg = typeof err === "object" && err && "message" in err ? String((err as any).message) : String(err ?? "");
+
+  const lower = msg.toLowerCase();
+
+  // Supabase common messages / patterns
+  if (lower.includes("invalid login credentials")) return "Wrong email or password. Please try again.";
+  if (lower.includes("invalid credentials")) return "Wrong email or password. Please try again.";
+  if (lower.includes("email not confirmed")) return "Please confirm your email first (check your inbox).";
+  if (lower.includes("user not found")) return "No account found with that email. Try signing up instead.";
+  if (lower.includes("phone") && lower.includes("invalid")) return "That phone number looks invalid. Use format +1XXXXXXXXXX.";
+  if (lower.includes("otp") && (lower.includes("invalid") || lower.includes("expired")))
+    return "That OTP is invalid or expired. Request a new code and try again.";
+
+  // fallback
+  return msg || "Something went wrong. Please try again.";
+}
+
+export default function AuthSheet({ open, onOpenChange }: Props) {
+  const { signInWithEmail, signUpWithEmail, signInWithPhoneOtp, verifyPhoneOtp, status } = useAuth();
+
+  const busy = status === "loading";
 
   const [mode, setMode] = useState<Mode>("login");
   const [method, setMethod] = useState<Method>("email");
 
+  // email form
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const [phone, setPhone] = useState(""); // E.164: +13035551234
-  const [otp, setOtp] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
+  // show/hide password
+  const [showPassword, setShowPassword] = useState(false);
 
-  const loading = status === "loading";
+  // phone OTP form
+  const [phone, setPhone] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otp, setOtp] = useState("");
 
   const title = useMemo(() => {
-    if (mode === "signup") return "Create your AfroConnect account";
-    return "Log in to AfroConnect";
+    if (mode === "signup") return "Create account";
+    return "Login";
   }, [mode]);
 
-  async function doEmail() {
+  async function onSubmitEmail() {
+    const e = email.trim();
+    const p = password;
+
+    if (!e) {
+      toast.error("Please enter your email.");
+      return;
+    }
+    if (!p || p.length < 6) {
+      toast.error("Password must be at least 6 characters.");
+      return;
+    }
+
     try {
-      const e = email.trim();
-      const p = password.trim();
-
-      if (!e) return toast.error("Enter your email.");
-      if (!p) return toast.error("Enter your password.");
-
       if (mode === "signup") {
         await signUpWithEmail(e, p);
-        toast.success("Account created. If email confirmation is enabled, check your inbox.");
+        toast.success("Account created. You're in.");
+        onOpenChange(false);
       } else {
         await signInWithEmail(e, p);
         toast.success("Logged in.");
+        onOpenChange(false);
       }
-
-      onOpenChange(false);
-    } catch (err: any) {
-      toast.error(err?.message ?? "Auth failed.");
+    } catch (err) {
+      toast.error(friendlyAuthError(err));
+      // Do NOT clear password; user may want to toggle visibility and correct it.
     }
   }
 
-  async function sendOtp() {
-    try {
-      const p = phone.trim();
-      if (!p.startsWith("+")) {
-        return toast.error("Phone must be in E.164 format, e.g. +13035551234");
-      }
+  async function onSendOtp() {
+    const p = normalizePhone(phone);
+    if (!p || p.length < 8) {
+      toast.error("Enter a valid phone number (example: +1720XXXXXXX).");
+      return;
+    }
 
+    try {
       await signInWithPhoneOtp(p);
       setOtpSent(true);
-      toast.success("OTP sent by SMS.");
-    } catch (err: any) {
-      toast.error(err?.message ?? "Failed to send OTP.");
+      toast.success("OTP sent. Check your SMS.");
+    } catch (err) {
+      toast.error(friendlyAuthError(err));
     }
   }
 
-  async function confirmOtp() {
+  async function onVerifyOtp() {
+    const p = normalizePhone(phone);
+    const t = otp.trim();
+    if (!p) {
+      toast.error("Enter your phone number first.");
+      return;
+    }
+    if (!t) {
+      toast.error("Enter the OTP code.");
+      return;
+    }
+
     try {
-      const p = phone.trim();
-      const code = otp.trim();
-
-      if (!code) return toast.error("Enter the OTP code.");
-      if (!p.startsWith("+")) return toast.error("Phone must start with + (E.164).");
-
-      await verifyPhoneOtp(p, code);
+      await verifyPhoneOtp(p, t);
       toast.success("Logged in.");
       onOpenChange(false);
-    } catch (err: any) {
-      toast.error(err?.message ?? "OTP verification failed.");
+    } catch (err) {
+      toast.error(friendlyAuthError(err));
     }
+  }
+
+  function resetPhoneFlow() {
+    setOtpSent(false);
+    setOtp("");
   }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="p-0 sm:max-w-none">
         <div className="p-4 border-b">
-          <div className="text-lg font-semibold">{title}</div>
-          <div className="text-xs text-muted-foreground mt-1">
-            Choose email or phone. This will create a real account and enable backend features.
-          </div>
-        </div>
+          <SheetHeader>
+            <SheetTitle>{title}</SheetTitle>
+          </SheetHeader>
 
-        <div className="p-4 space-y-4">
           {/* Mode toggle */}
-          <div className="flex gap-2">
+          <div className="mt-3 flex gap-2">
             <button
               type="button"
-              onClick={() => setMode("login")}
               className={[
-                "px-4 py-2 rounded-full text-sm border transition",
-                mode === "login" ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted/50",
+                "px-4 py-1.5 rounded-full text-sm border transition",
+                mode === "login" ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted/50",
               ].join(" ")}
+              onClick={() => setMode("login")}
             >
               Login
             </button>
+
             <button
               type="button"
-              onClick={() => setMode("signup")}
               className={[
-                "px-4 py-2 rounded-full text-sm border transition",
-                mode === "signup" ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted/50",
+                "px-4 py-1.5 rounded-full text-sm border transition",
+                mode === "signup"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background hover:bg-muted/50",
               ].join(" ")}
+              onClick={() => setMode("signup")}
             >
               Create account
             </button>
           </div>
 
           {/* Method toggle */}
-          <div className="flex gap-2">
+          <div className="mt-3 flex gap-2">
             <button
               type="button"
+              className={[
+                "px-4 py-1.5 rounded-full text-sm border transition",
+                method === "email" ? "bg-muted border-muted-foreground/20" : "bg-background hover:bg-muted/50",
+              ].join(" ")}
               onClick={() => {
                 setMethod("email");
-                setOtpSent(false);
-                setOtp("");
+                resetPhoneFlow();
               }}
-              className={[
-                "px-4 py-2 rounded-full text-sm border transition",
-                method === "email" ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted/50",
-              ].join(" ")}
             >
               Email
             </button>
+
             <button
               type="button"
+              className={[
+                "px-4 py-1.5 rounded-full text-sm border transition",
+                method === "phone" ? "bg-muted border-muted-foreground/20" : "bg-background hover:bg-muted/50",
+              ].join(" ")}
               onClick={() => {
                 setMethod("phone");
-                setPassword("");
+                // keep email/pass as-is, just switch view
               }}
-              className={[
-                "px-4 py-2 rounded-full text-sm border transition",
-                method === "phone" ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted/50",
-              ].join(" ")}
             >
               Phone
             </button>
           </div>
+        </div>
 
+        <div className="p-4 space-y-4">
           {method === "email" ? (
-            <div className="space-y-3">
-              <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
-              <Input
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
-                type="password"
-              />
+            <>
+              <div className="space-y-2">
+                <label className="text-sm text-muted-foreground">Email</label>
+                <Input
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@email.com"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  inputMode="email"
+                />
+              </div>
 
-              <Button onClick={doEmail} disabled={loading} className="w-full">
-                {loading ? "Working..." : mode === "signup" ? "Create account" : "Login"}
-              </Button>
+              <div className="space-y-2">
+                <label className="text-sm text-muted-foreground">Password</label>
 
-              {mode === "signup" && (
-                <div className="text-xs text-muted-foreground">
-                  If email confirmation is enabled in Supabase, you must confirm your email to fully sign in.
+                <div className="relative">
+                  <Input
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={mode === "signup" ? "Create a password" : "Enter your password"}
+                    type={showPassword ? "text" : "password"}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                  />
+
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    title={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
-              )}
-            </div>
+
+                <div className="text-xs text-muted-foreground">
+                  {mode === "signup" ? "Tip: use at least 6 characters." : "Tip: tap the eye icon to confirm what you typed."}
+                </div>
+              </div>
+
+              <Button onClick={onSubmitEmail} disabled={busy} className="w-full">
+                {busy ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Please wait…
+                  </>
+                ) : mode === "signup" ? (
+                  "Create account"
+                ) : (
+                  "Login"
+                )}
+              </Button>
+            </>
           ) : (
-            <div className="space-y-3">
-              <Input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="Phone (E.164) e.g. +13035551234"
-              />
+            <>
+              <div className="space-y-2">
+                <label className="text-sm text-muted-foreground">Phone (E.164)</label>
+                <Input
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+1720XXXXXXX"
+                  inputMode="tel"
+                />
+                <div className="text-xs text-muted-foreground">
+                  Must include country code, e.g. <strong>+1</strong> for USA.
+                </div>
+              </div>
 
               {!otpSent ? (
-                <Button onClick={sendOtp} disabled={loading} className="w-full">
-                  {loading ? "Working..." : "Send OTP"}
+                <Button onClick={onSendOtp} disabled={busy} className="w-full">
+                  {busy ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Sending…
+                    </>
+                  ) : (
+                    "Send OTP"
+                  )}
                 </Button>
               ) : (
                 <>
-                  <Input value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="Enter OTP code" />
-                  <Button onClick={confirmOtp} disabled={loading} className="w-full">
-                    {loading ? "Working..." : "Confirm & Login"}
-                  </Button>
+                  <div className="space-y-2">
+                    <label className="text-sm text-muted-foreground">OTP Code</label>
+                    <Input value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="123456" inputMode="numeric" />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button onClick={onVerifyOtp} disabled={busy} className="flex-1">
+                      {busy ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Verifying…
+                        </>
+                      ) : (
+                        "Verify & Login"
+                      )}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        resetPhoneFlow();
+                      }}
+                    >
+                      Change phone
+                    </Button>
+                  </div>
+
                   <Button
-                    variant="outline"
-                    onClick={() => {
-                      setOtpSent(false);
-                      setOtp("");
-                    }}
+                    type="button"
+                    variant="ghost"
                     className="w-full"
+                    onClick={onSendOtp}
+                    disabled={busy}
                   >
-                    Resend / Change phone
+                    Resend OTP
                   </Button>
                 </>
               )}
-
-              <div className="text-xs text-muted-foreground">
-                Phone login requires enabling Phone provider in Supabase Auth settings.
-              </div>
-            </div>
+            </>
           )}
-        </div>
-
-        <div className="p-4 border-t flex justify-end">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
         </div>
       </SheetContent>
     </Sheet>
