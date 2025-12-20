@@ -1,3 +1,4 @@
+// src/App.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Routes, Route } from "react-router-dom";
 
@@ -18,6 +19,7 @@ import SettingsPage from "./components/SettingsPage";
 import EventsPage from "./components/EventsPage";
 import AppSearchSheet from "./components/AppSearchSheet";
 import AuthSheet from "./components/AuthSheet";
+import FirstLoginOnboardingSheet from "@/components/FirstLoginOnboardingSheet";
 
 import Logo from "./assets/afroconnect-logo.png";
 
@@ -63,6 +65,10 @@ function readProfile(): StoredProfile {
   }
 }
 
+function onboardingKey(userId: string) {
+  return `afroconnect.onboarding.done.${userId}`;
+}
+
 function AppInner() {
   const { user, status, signOut } = useAuth();
   const isLoggedIn = !!user && status === "authenticated";
@@ -79,6 +85,9 @@ function AppInner() {
   const [searchOpen, setSearchOpen] = useState(false);
 
   const [authOpen, setAuthOpen] = useState(false);
+
+  // First-login onboarding
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
 
   const [communityId, setCommunityId] = useState(() => getSavedCommunityId());
   const [areaId, setAreaId] = useState(() => getSavedAreaId(getSavedCommunityId()));
@@ -136,6 +145,13 @@ function AppInner() {
 
   // helper: open auth anywhere
   const requireLogin = () => setAuthOpen(true);
+
+  // Open onboarding once per user after successful login
+  useEffect(() => {
+    if (!isLoggedIn || !user?.id) return;
+    const done = localStorage.getItem(onboardingKey(user.id)) === "1";
+    if (!done) setOnboardingOpen(true);
+  }, [isLoggedIn, user?.id]);
 
   if (isLoggedIn && !location) {
     return (
@@ -248,6 +264,12 @@ function AppInner() {
       />
 
       <AuthSheet open={authOpen} onOpenChange={setAuthOpen} />
+
+      <FirstLoginOnboardingSheet
+        open={onboardingOpen}
+        onOpenChange={setOnboardingOpen}
+        communityLabel={locationLabel}
+      />
 
       <LocationConfirmModal
         open={locationModalOpen}

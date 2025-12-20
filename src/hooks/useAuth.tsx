@@ -1,9 +1,18 @@
+// src/hooks/useAuth.tsx
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 
 type AuthStatus = "idle" | "loading" | "authenticated" | "unauthenticated" | "error";
+
+export type ProfileRow = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  display_name: string;
+  avatar_url?: string | null;
+};
 
 type AuthContextValue = {
   user: User | null;
@@ -16,27 +25,81 @@ type AuthContextValue = {
   signInWithPhoneOtp: (phoneE164: string) => Promise<void>;
   verifyPhoneOtp: (phoneE164: string, token: string) => Promise<void>;
 
+  upsertMyProfile: (p: { firstName: string; lastName: string }) => Promise<ProfileRow>;
+  getMyProfile: () => Promise<ProfileRow | null>;
+
   signOut: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-function getSiteUrl() {
-  // Prefer explicit env var for Vercel stability; fallback to current origin.
-  const env = (import.meta as any)?.env;
-  const fromEnv = (env?.VITE_SITE_URL as string | undefined)?.trim();
-  if (fromEnv) return fromEnv.replace(/\/$/, "");
-  return window.location.origin.replace(/\/$/, "");
-}
+const LS_PROFILE = "afroconnect.profile";
 
-function getAuthCallbackUrl() {
-  return `${getSiteUrl()}/auth/callback`;
+function saveProfileToLocal(profile: ProfileRow) {
+  localStorage.setItem(
+    LS_PROFILE,
+    JSON.stringify({
+      displayName: profile.display_name,
+      avatarUrl: profile.avatar_url ?? undefined,
+    })
+  );
+  window.dispatchEvent(new Event("afroconnect.profileUpdated"));
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [status, setStatus] = useState<AuthStatus>("loading");
+
+  async function getMyProfile(): Promise<ProfileRow | null> {
+    const { data: s } = await supabase.auth.getSession();
+    const uid = s.session?.user?.id;
+    if (!uid) return null;
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, first_name, last_name, display_name, avatar_url")
+      .eq("id", uid)
+      .maybeSingle();
+
+    if (error) {
+      console.error("[Profile] getMyProfile error:", error);
+      return null;
+    }
+    return (data as ProfileRow) ?? null;
+  }
+
+  async function upsertMyProfile(p: { firstName: string; lastName: string }): Promise<ProfileRow> {
+    const { data: s } = await supabase.auth.getSession();
+    const u = s.session?.user;
+    if (!u) throw new Error("No active session. Please log in again.");
+
+    const first = p.firstName.trim();
+    const last = p.lastName.trim();
+    const display = `${first} ${last}`.trim();
+
+    const payload = {
+      id: u.id,
+      first_name: first,
+      last_name: last,
+      display_name: display,
+      avatar_url: null,
+    };
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .upsert(payload, { onConflict: "id" })
+      .select("id, first_name, last_name, display_name, avatar_url")
+      .single();
+
+    if (error) {
+      console.error("[Profile] upsert error:", error);
+      throw error;
+    }
+
+    saveProfileToLocal(data as ProfileRow);
+    return data as ProfileRow;
+  }
 
   useEffect(() => {
     let alive = true;
@@ -55,12 +118,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(data.session);
       setUser(data.session?.user ?? null);
       setStatus(data.session?.user ? "authenticated" : "unauthenticated");
+
+      // If logged in, try to load profile for UI display name
+      if (data.session?.user) {
+        const prof = await getMyProfile();
+        if (prof) saveProfileToLocal(prof);
+      }
     })();
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
       setSession(newSession);
       setUser(newSession?.user ?? null);
       setStatus(newSession?.user ? "authenticated" : "unauthenticated");
+
+      if (newSession?.user) {
+        const prof = await getMyProfile();
+        if (prof) saveProfileToLocal(prof);
+      }
     });
 
     return () => {
@@ -77,24 +151,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       signUpWithEmail: async (email, password) => {
         setStatus("loading");
-
-        const emailRedirectTo = getAuthCallbackUrl();
-
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo,
-          },
-        });
-
+        const { error } = await supabase.auth.signUp({ email, password });
         if (error) {
           console.error("[Auth] signUp error:", error);
           setStatus("error");
           throw error;
         }
-
-        // If confirmation is OFF, user may be signed in immediately.
+        // Session may or may not exist depending on email-confirm settings.
+        // onAuthStateChange will update when session becomes active.
         const { data } = await supabase.auth.getSession();
         setSession(data.session);
         setUser(data.session?.user ?? null);
@@ -109,28 +173,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setStatus("error");
           throw error;
         }
-        // onAuthStateChange updates state
+        // onAuthStateChange updates user/session
       },
 
       signInWithPhoneOtp: async (phoneE164) => {
         setStatus("loading");
-
-        // Phone OTP does not typically use redirectTo, but we keep callback URL handy
-        // for future magic-link/OAuth additions.
-        const { error } = await supabase.auth.signInWithOtp({
-          phone: phoneE164,
-          options: {
-            // keep user creation enabled
-            shouldCreateUser: true,
-          },
-        });
-
+        const { error } = await supabase.auth.signInWithOtp({ phone: phoneE164 });
         if (error) {
           console.error("[Auth] signInWithOtp error:", error);
           setStatus("error");
           throw error;
         }
-
         setStatus("unauthenticated");
       },
 
@@ -146,8 +199,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setStatus("error");
           throw error;
         }
-        // onAuthStateChange updates state
+        // onAuthStateChange updates user/session
       },
+
+      upsertMyProfile,
+      getMyProfile,
 
       signOut: async () => {
         setStatus("loading");
@@ -157,7 +213,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setStatus("error");
           throw error;
         }
-        // onAuthStateChange updates state
+        localStorage.removeItem(LS_PROFILE);
+        window.dispatchEvent(new Event("afroconnect.profileUpdated"));
       },
     }),
     [user, session, status]

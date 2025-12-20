@@ -1,3 +1,4 @@
+// src/components/CreateComposerSheet.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,6 +66,7 @@ export default function CreateComposerSheet({
   canInteract,
   onRequireLogin,
   onSubmit,
+  defaultText,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -73,6 +75,7 @@ export default function CreateComposerSheet({
   canInteract: boolean;
   onRequireLogin: () => void;
   onSubmit: (payload: ComposerPayload) => void;
+  defaultText?: string;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textRef = useRef<HTMLTextAreaElement | null>(null);
@@ -87,14 +90,20 @@ export default function CreateComposerSheet({
   const [where, setWhere] = useState("");
   const [media, setMedia] = useState<MediaItem[]>([]);
 
-  // When opened, sync initial kind + focus + keep fields
+  // When opened, sync initial kind + optional prefill + focus
   useEffect(() => {
     if (!open) return;
+
     setActiveKind(kind);
-    // focus after paint
+
+    // Prefill text (only when composer opens)
+    if (typeof defaultText === "string" && defaultText.trim().length > 0) {
+      setText(defaultText);
+    }
+
     const t = window.setTimeout(() => textRef.current?.focus(), 50);
     return () => window.clearTimeout(t);
-  }, [open, kind]);
+  }, [open, kind, defaultText]);
 
   // When switching kinds, keep text/media, but clear type-specific fields
   useEffect(() => {
@@ -172,7 +181,6 @@ export default function CreateComposerSheet({
   }
 
   function resetAllAndClose() {
-    // Full reset (Nextdoor-like): close composer after publish/cancel
     setText("");
     setTitle("");
     setPrice("");
@@ -210,10 +218,9 @@ export default function CreateComposerSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      {/* Full-screen on mobile */}
       <SheetContent side="right" className="w-full sm:max-w-[560px] p-0">
         <div className="h-screen flex flex-col">
-          {/* TOP BAR (sticky) */}
+          {/* TOP BAR */}
           <div className="px-4 py-3 border-b flex items-center gap-3">
             <Button variant="ghost" size="sm" onClick={close}>
               Cancel
@@ -229,7 +236,7 @@ export default function CreateComposerSheet({
             </Button>
           </div>
 
-          {/* TYPE TABS (inside composer) */}
+          {/* TYPE TABS */}
           <div className="px-4 pt-4">
             <div className="grid grid-cols-4 gap-2">
               <KindTab active={activeKind === "post"} label="Post" onClick={() => setActiveKind("post")} />
@@ -241,7 +248,6 @@ export default function CreateComposerSheet({
 
           {/* BODY */}
           <div className="flex-1 overflow-auto px-4 pb-28 pt-4 space-y-3">
-            {/* Type-specific compact fields */}
             {activeKind === "sell" && (
               <div className="grid grid-cols-1 gap-2">
                 <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Item title (optional)" />
@@ -266,7 +272,6 @@ export default function CreateComposerSheet({
               disabled={!canInteract}
             />
 
-            {/* Media controls */}
             <div className="flex flex-wrap items-center gap-2">
               <input
                 ref={fileInputRef}
@@ -291,7 +296,6 @@ export default function CreateComposerSheet({
               <div className="text-xs text-muted-foreground ml-auto">{kindLabel(activeKind)}</div>
             </div>
 
-            {/* Media grid */}
             {media.length > 0 && (
               <div className="grid grid-cols-2 gap-3">
                 {media.map((m) => (
@@ -329,7 +333,7 @@ export default function CreateComposerSheet({
             </div>
           </div>
 
-          {/* BOTTOM ACTION BAR (sticky, modern) */}
+          {/* BOTTOM BAR */}
           <div className="px-4 py-3 border-t bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/70">
             <div className="flex items-center justify-between gap-2">
               <Button variant="ghost" size="sm" onClick={resetAllAndClose}>

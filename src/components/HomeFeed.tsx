@@ -177,6 +177,7 @@ export default function HomeFeed({ userLocation, onRequireLogin }: Props) {
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerKind, setComposerKind] = useState<CreateKind>("post");
+  const [composerPrefill, setComposerPrefill] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     savePosts(posts);
@@ -188,6 +189,28 @@ export default function HomeFeed({ userLocation, onRequireLogin }: Props) {
     if (!threadPostId) return null;
     return posts.find((p) => p.id === threadPostId) ?? null;
   }, [threadPostId, posts]);
+
+  // Listen for global "openComposer" events (used by onboarding, etc.)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const ce = e as CustomEvent;
+      const detail = ce.detail as { kind?: CreateKind; prefill?: string } | undefined;
+      if (!detail) return;
+
+      if (!canInteract) {
+        requestLogin();
+        return;
+      }
+
+      if (detail.kind) setComposerKind(detail.kind);
+      if (detail.prefill) setComposerPrefill(detail.prefill);
+
+      setComposerOpen(true);
+    };
+
+    window.addEventListener("afroconnect.openComposer", handler as EventListener);
+    return () => window.removeEventListener("afroconnect.openComposer", handler as EventListener);
+  }, [canInteract]);
 
   const visiblePosts = useMemo(() => {
     const term = feedSearch.trim().toLowerCase();
@@ -276,7 +299,9 @@ export default function HomeFeed({ userLocation, onRequireLogin }: Props) {
   }
 
   function onPickCreateKind(k: CreateKind) {
+    if (!canInteract) return requestLogin();
     setCreateMenuOpen(false);
+    setComposerPrefill(undefined);
     setComposerKind(k);
     setComposerOpen(true);
   }
@@ -396,9 +421,7 @@ export default function HomeFeed({ userLocation, onRequireLogin }: Props) {
               onClick={() => setDensity("compact")}
               className={[
                 "px-4 py-1.5 rounded-full text-sm border transition",
-                density === "compact"
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background hover:bg-muted/50",
+                density === "compact" ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted/50",
               ].join(" ")}
             >
               Compact
@@ -605,14 +628,19 @@ export default function HomeFeed({ userLocation, onRequireLogin }: Props) {
 
       <CreateComposerSheet
         open={composerOpen}
-        onOpenChange={setComposerOpen}
+        onOpenChange={(v) => {
+          setComposerOpen(v);
+          if (!v) setComposerPrefill(undefined);
+        }}
         kind={composerKind}
         communityLabel={communityLabel}
         canInteract={canInteract}
         onRequireLogin={requestLogin}
         onSubmit={onComposerSubmit}
+        defaultText={composerPrefill}
       />
 
+      {/* COMMENTS */}
       <Sheet open={openThread} onOpenChange={setOpenThread}>
         <SheetContent side="bottom" className="p-0 sm:max-w-none">
           <div className="p-4 border-b">
@@ -639,12 +667,7 @@ export default function HomeFeed({ userLocation, onRequireLogin }: Props) {
                       <div className="grid grid-cols-3 gap-2">
                         {activeThreadPost.media.slice(0, 6).map((m) =>
                           m.kind === "image" ? (
-                            <img
-                              key={m.id}
-                              src={m.url}
-                              alt={m.name}
-                              className="h-20 w-full rounded-lg border object-cover"
-                            />
+                            <img key={m.id} src={m.url} alt={m.name} className="h-20 w-full rounded-lg border object-cover" />
                           ) : (
                             <div key={m.id} className="h-20 w-full rounded-lg border bg-black flex items-center justify-center">
                               <VideoIcon className="h-5 w-5 text-white/80" />
