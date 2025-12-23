@@ -4,6 +4,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useNavigate } from "react-router-dom";
 
 import {
   Home,
@@ -18,17 +19,6 @@ import {
   Settings,
 } from "lucide-react";
 
-export type TabRoute =
-  | "home"
-  | "marketplace"
-  | "businesses"
-  | "groups"
-  | "students"
-  | "messages"
-  | "events"
-  | "profile"
-  | "settings";
-
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -36,8 +26,6 @@ type Props = {
   displayName: string;
   communityName: string;
   avatarUrl?: string;
-
-  onNavigate?: (route: TabRoute) => void;
 };
 
 function initials(name: string) {
@@ -79,16 +67,16 @@ export default function AppMenuSheet({
   displayName,
   communityName,
   avatarUrl,
-  onNavigate,
 }: Props) {
-  const nav = (route: TabRoute) => {
+  const navigate = useNavigate();
+
+  const go = (path: string) => {
     onOpenChange(false);
-    onNavigate?.(route);
+    navigate(path);
   };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      {/* Make the sheet a flex column so we can scroll the middle */}
       <SheetContent side="right" className="w-[320px] p-0 flex flex-col">
         {/* Header */}
         <div className="px-4 py-5 shrink-0">
@@ -111,26 +99,22 @@ export default function AppMenuSheet({
         <div className="flex-1 overflow-y-auto">
           {/* MAIN APP NAV */}
           <div className="px-3 py-3 space-y-1">
-            <MenuItem icon={<Home className="h-4 w-4" />} label="Home" onClick={() => nav("home")} />
-            <MenuItem icon={<Store className="h-4 w-4" />} label="Marketplace" onClick={() => nav("marketplace")} />
-            <MenuItem icon={<Building2 className="h-4 w-4" />} label="Businesses" onClick={() => nav("businesses")} />
-            <MenuItem icon={<Users className="h-4 w-4" />} label="Groups" onClick={() => nav("groups")} />
-            <MenuItem icon={<GraduationCap className="h-4 w-4" />} label="Students" onClick={() => nav("students")} />
-            <MenuItem icon={<MessageCircle className="h-4 w-4" />} label="Messages" onClick={() => nav("messages")} />
-            <MenuItem icon={<CalendarDays className="h-4 w-4" />} label="Events" onClick={() => nav("events")} />
+            <MenuItem icon={<Home className="h-4 w-4" />} label="Home" onClick={() => go("/")} />
+            <MenuItem icon={<Store className="h-4 w-4" />} label="Marketplace" onClick={() => go("/marketplace")} />
+            <MenuItem icon={<Building2 className="h-4 w-4" />} label="Businesses" onClick={() => go("/business")} />
+            <MenuItem icon={<Users className="h-4 w-4" />} label="Groups" onClick={() => go("/groups")} />
+            <MenuItem icon={<GraduationCap className="h-4 w-4" />} label="Students" onClick={() => go("/students")} />
+            <MenuItem icon={<MessageCircle className="h-4 w-4" />} label="Messages" onClick={() => go("/messages")} />
+            <MenuItem icon={<CalendarDays className="h-4 w-4" />} label="Events" onClick={() => go("/events")} />
           </div>
 
           <Separator />
 
-          {/* ACCOUNT / SETTINGS (this is what you’re missing) */}
+          {/* ACCOUNT / SETTINGS */}
           <div className="px-3 py-3 space-y-1">
-            <MenuItem icon={<User className="h-4 w-4" />} label="My profile" onClick={() => nav("profile")} />
-            <MenuItem icon={<Settings className="h-4 w-4" />} label="Settings" onClick={() => nav("settings")} />
-            <MenuItem
-              icon={<HelpCircle className="h-4 w-4" />}
-              label="Help Center"
-              onClick={() => console.log("Help (next)")}
-            />
+            <MenuItem icon={<User className="h-4 w-4" />} label="My profile" onClick={() => go("/profile")} />
+            <MenuItem icon={<Settings className="h-4 w-4" />} label="Settings" onClick={() => go("/settings")} />
+            <MenuItem icon={<HelpCircle className="h-4 w-4" />} label="Help Center" onClick={() => go("/help")} />
           </div>
         </div>
 

@@ -61,7 +61,7 @@ function readName() {
   }
 }
 
-export default function EventsPage({ communityLabel, isLoggedIn, onLogin }: Props) {
+export default function EventsBoard({ communityLabel, isLoggedIn, onLogin }: Props) {
   const [events, setEvents] = useState<EventItem[]>(() => {
     try {
       return JSON.parse(localStorage.getItem(LS_EVENTS) || "[]");

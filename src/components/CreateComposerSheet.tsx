@@ -1,4 +1,3 @@
-// src/components/CreateComposerSheet.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,24 +29,9 @@ function uid() {
   return (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`) as string;
 }
 
-// MVP content-policy block
 function violatesPolicy(text: string) {
   const s = (text || "").toLowerCase();
-  const blocked = [
-    "porn",
-    "nude",
-    "sex",
-    "sexual",
-    "xxx",
-    "onlyfans",
-    "rape",
-    "kill",
-    "murder",
-    "shoot",
-    "gun down",
-    "terrorist",
-    "behead",
-  ];
+  const blocked = ["porn", "nude", "sex", "sexual", "xxx", "onlyfans", "rape", "kill", "murder", "shoot", "gun down", "terrorist", "behead"];
   return blocked.some((w) => s.includes(w));
 }
 
@@ -61,12 +45,11 @@ function kindLabel(k: CreateKind) {
 export default function CreateComposerSheet({
   open,
   onOpenChange,
-  kind, // treated as initial kind
+  kind,
   communityLabel,
   canInteract,
   onRequireLogin,
   onSubmit,
-  defaultText,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -75,12 +58,10 @@ export default function CreateComposerSheet({
   canInteract: boolean;
   onRequireLogin: () => void;
   onSubmit: (payload: ComposerPayload) => void;
-  defaultText?: string;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // INTERNAL kind so you can switch tabs inside the composer
   const [activeKind, setActiveKind] = useState<CreateKind>(kind);
 
   const [text, setText] = useState("");
@@ -90,22 +71,23 @@ export default function CreateComposerSheet({
   const [where, setWhere] = useState("");
   const [media, setMedia] = useState<MediaItem[]>([]);
 
-  // When opened, sync initial kind + optional prefill + focus
   useEffect(() => {
     if (!open) return;
 
     setActiveKind(kind);
 
-    // Prefill text (only when composer opens)
-    if (typeof defaultText === "string" && defaultText.trim().length > 0) {
-      setText(defaultText);
+    // Apply one-time prefill if present
+    const prefill = (window as any).__AFROCONNECT_COMPOSER_PREFILL__ as string | undefined;
+    if (prefill && !text.trim()) {
+      setText(prefill);
+      (window as any).__AFROCONNECT_COMPOSER_PREFILL__ = undefined;
     }
 
     const t = window.setTimeout(() => textRef.current?.focus(), 50);
     return () => window.clearTimeout(t);
-  }, [open, kind, defaultText]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, kind]);
 
-  // When switching kinds, keep text/media, but clear type-specific fields
   useEffect(() => {
     if (activeKind === "sell") {
       setWhen("");
@@ -113,7 +95,6 @@ export default function CreateComposerSheet({
     } else if (activeKind === "event") {
       setPrice("");
     } else {
-      // post/ask
       setTitle("");
       setPrice("");
       setWhen("");
@@ -220,7 +201,6 @@ export default function CreateComposerSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-[560px] p-0">
         <div className="h-screen flex flex-col">
-          {/* TOP BAR */}
           <div className="px-4 py-3 border-b flex items-center gap-3">
             <Button variant="ghost" size="sm" onClick={close}>
               Cancel
@@ -236,7 +216,6 @@ export default function CreateComposerSheet({
             </Button>
           </div>
 
-          {/* TYPE TABS */}
           <div className="px-4 pt-4">
             <div className="grid grid-cols-4 gap-2">
               <KindTab active={activeKind === "post"} label="Post" onClick={() => setActiveKind("post")} />
@@ -246,7 +225,6 @@ export default function CreateComposerSheet({
             </div>
           </div>
 
-          {/* BODY */}
           <div className="flex-1 overflow-auto px-4 pb-28 pt-4 space-y-3">
             {activeKind === "sell" && (
               <div className="grid grid-cols-1 gap-2">
@@ -333,7 +311,6 @@ export default function CreateComposerSheet({
             </div>
           </div>
 
-          {/* BOTTOM BAR */}
           <div className="px-4 py-3 border-t bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/70">
             <div className="flex items-center justify-between gap-2">
               <Button variant="ghost" size="sm" onClick={resetAllAndClose}>
@@ -351,15 +328,7 @@ export default function CreateComposerSheet({
   );
 }
 
-function KindTab({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
+function KindTab({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
   return (
     <button
       type="button"

@@ -1,3 +1,4 @@
+// src/main.tsx
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { InternetIdentityProvider } from "./hooks/useInternetIdentity";
@@ -23,7 +24,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <InternetIdentityProvider>
         <AuthProvider>
-          <SplashGate logoSrc={Logo} slogan="Connecting Africans Globally" durationMs={5000}>
+          <SplashGate logoSrc={Logo} slogan="Connecting Africans Globally" durationMs={2000}>
             <App />
           </SplashGate>
         </AuthProvider>

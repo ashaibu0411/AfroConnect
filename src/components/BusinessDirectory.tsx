@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Phone, MapPin, Globe2, Search, Star } from "lucide-react";
+import { Phone, MapPin, Globe2, Search, Star, Plus } from "lucide-react";
 
 type DirectoryBusiness = {
   id: number;
@@ -75,41 +75,55 @@ export default function BusinessDirectory() {
   const [selectedCategory, setSelectedCategory] = useState("All categories");
 
   const visibleBusinesses = DIRECTORY_DATA.filter((biz) => {
-    const matchesCategory =
-      selectedCategory === "All categories" ||
-      biz.category === selectedCategory;
+    const matchesCategory = selectedCategory === "All categories" || biz.category === selectedCategory;
 
     const matchesSearch =
       !searchTerm ||
       biz.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       biz.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      biz.tags.some((t) =>
-        t.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      biz.tags.some((t) => t.toLowerCase().includes(searchTerm.toLowerCase()));
 
     return matchesCategory && matchesSearch;
   });
 
+  const openAddBusiness = () => {
+    window.dispatchEvent(
+      new CustomEvent("afroconnect.openComposer", {
+        detail: {
+          kind: "post",
+          prefill:
+            "Business name:\nCategory:\nCity/Country:\nPhone/WhatsApp:\nWebsite (optional):\nHours:\nDo you deliver?:\nShort description:\n",
+        },
+      })
+    );
+  };
+
   return (
     <div className="min-h-[calc(100vh-3.5rem)] bg-gradient-to-b from-background via-background to-secondary/5">
       <div className="container max-w-5xl py-6 space-y-6">
-        {/* HEADER */}
         <Card className="border-2 border-secondary/20">
           <CardHeader>
             <CardTitle className="flex items-center justify-between gap-2">
               <span className="text-xl font-bold">Business Directory</span>
-              <Badge variant="outline" className="text-xs">
-                Beta · Local & Home-based
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">
+                  Beta · Local & Home-based
+                </Badge>
+
+                {/* ✅ NEW: Add/Claim Business */}
+                <Button size="sm" onClick={openAddBusiness}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Business
+                </Button>
+              </div>
             </CardTitle>
           </CardHeader>
+
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Explore African-owned and home-based businesses in your area.
-              Perfect for food orders, hair appointments, events, and everyday services.
+              Explore African-owned and home-based businesses in your area. Perfect for food orders, hair appointments, events, and everyday services.
             </p>
 
-            {/* SEARCH / FILTERS */}
             <div className="flex flex-col md:flex-row gap-3">
               <div className="relative flex-1">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -120,10 +134,8 @@ export default function BusinessDirectory() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              <Select
-                value={selectedCategory}
-                onValueChange={setSelectedCategory}
-              >
+
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                 <SelectTrigger className="w-[200px]">
                   <SelectValue placeholder="Category" />
                 </SelectTrigger>
@@ -136,10 +148,13 @@ export default function BusinessDirectory() {
                 </SelectContent>
               </Select>
             </div>
+
+            <p className="text-xs text-muted-foreground">
+              Tip: businesses can post weekly updates, new menus, and promos using the main “Create” button as well.
+            </p>
           </CardContent>
         </Card>
 
-        {/* BUSINESS LIST */}
         <ScrollArea className="h-[calc(100vh-16rem)] pr-2">
           <div className="space-y-4">
             {visibleBusinesses.map((biz) => (
@@ -149,18 +164,15 @@ export default function BusinessDirectory() {
                     <div className="flex items-center gap-2">
                       <CardTitle className="text-base">{biz.name}</CardTitle>
                       {biz.isVerified && (
-                        <Badge
-                          variant="secondary"
-                          className="flex items-center gap-1 text-[11px]"
-                        >
+                        <Badge variant="secondary" className="flex items-center gap-1 text-[11px]">
                           <Star className="h-3 w-3 text-amber-500" />
                           Verified
                         </Badge>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {biz.category}
-                    </p>
+
+                    <p className="text-xs text-muted-foreground mt-1">{biz.category}</p>
+
                     <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                       <MapPin className="h-3 w-3" />
                       <span>
@@ -169,10 +181,10 @@ export default function BusinessDirectory() {
                     </div>
                   </div>
                 </CardHeader>
+
                 <CardContent className="space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    {biz.shortDescription}
-                  </p>
+                  <p className="text-sm text-muted-foreground">{biz.shortDescription}</p>
+
                   <div className="flex flex-wrap gap-1">
                     {biz.tags.map((tag) => (
                       <Badge key={tag} variant="outline" className="text-[11px]">
@@ -182,12 +194,7 @@ export default function BusinessDirectory() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 pt-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex items-center gap-1"
-                      asChild
-                    >
+                    <Button variant="outline" size="sm" className="flex items-center gap-1" asChild>
                       <a href={`tel:${biz.phone}`}>
                         <Phone className="h-4 w-4" />
                         Call
@@ -195,17 +202,8 @@ export default function BusinessDirectory() {
                     </Button>
 
                     {biz.website && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="flex items-center gap-1"
-                        asChild
-                      >
-                        <a
-                          href={biz.website}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
+                      <Button variant="ghost" size="sm" className="flex items-center gap-1" asChild>
+                        <a href={biz.website} target="_blank" rel="noopener noreferrer">
                           <Globe2 className="h-4 w-4" />
                           Website
                         </a>

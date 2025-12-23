@@ -2,13 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -20,10 +14,10 @@ import {
   DollarSign,
   Truck,
   MapPinned,
+  Plus,
 } from "lucide-react";
 
 type MarketplaceProps = {
-  // ✅ now supports (businessName, optionalPrefillMessage)
   onStartChat?: (title: string, prefillMessage?: string) => void;
 };
 
@@ -50,8 +44,7 @@ const SAMPLE_LISTINGS: Listing[] = [
     state: "CO",
     country: "USA",
     priceLabel: "Plates from $15",
-    description:
-      "Home-cooked waakye, jollof, banku, and more. Pickup or delivery on weekends.",
+    description: "Home-cooked waakye, jollof, banku, and more. Pickup or delivery on weekends.",
     isHomeBased: true,
   },
   {
@@ -63,8 +56,7 @@ const SAMPLE_LISTINGS: Listing[] = [
     state: "CO",
     country: "USA",
     priceLabel: "Styles from $80",
-    description:
-      "Knotless braids, sew-ins, wig installs. We travel within Denver metro.",
+    description: "Knotless braids, sew-ins, wig installs. We travel within Denver metro.",
     isHomeBased: false,
   },
   {
@@ -76,8 +68,7 @@ const SAMPLE_LISTINGS: Listing[] = [
     state: "TX",
     country: "USA",
     priceLabel: "Varies",
-    description:
-      "Palm oil, fufu, spices, snacks and more. Order and pick up same day.",
+    description: "Palm oil, fufu, spices, snacks and more. Order and pick up same day.",
     isHomeBased: false,
   },
 ];
@@ -97,11 +88,8 @@ export default function Marketplace({ onStartChat }: MarketplaceProps) {
   const [selectedCountry, setSelectedCountry] = useState("USA");
 
   const filteredListings = SAMPLE_LISTINGS.filter((listing) => {
-    const matchesCountry =
-      selectedCountry === "All" || listing.country === selectedCountry;
-    const matchesCategory =
-      selectedCategory === "All categories" ||
-      listing.category === selectedCategory;
+    const matchesCountry = selectedCountry === "All" || listing.country === selectedCountry;
+    const matchesCategory = selectedCategory === "All categories" || listing.category === selectedCategory;
     const matchesSearch =
       !searchTerm ||
       listing.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -116,31 +104,36 @@ export default function Marketplace({ onStartChat }: MarketplaceProps) {
       onStartChat(businessName, prefillMessage);
       return;
     }
-    alert(
-      `Start a chat with ${businessName}\n\nPrefill:\n${prefillMessage ?? "(none)"}`
-    );
+    alert(`Start a chat with ${businessName}\n\nPrefill:\n${prefillMessage ?? "(none)"}`);
+  };
+
+  const openSellComposer = () => {
+    window.dispatchEvent(new CustomEvent("afroconnect.openComposer", { detail: { kind: "sell" } }));
   };
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] bg-gradient-to-b from-background via-background to-primary/5">
       <div className="container max-w-5xl py-6 space-y-6">
-        {/* HEADER / INTRO */}
         <Card className="border-2 border-primary/20 bg-gradient-to-r from-primary/5 via-accent/5 to-secondary/5">
-          <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <CardHeader className="flex flex-row items-start justify-between gap-4">
             <div>
               <CardTitle className="flex items-center gap-2">
                 <ShoppingBag className="h-5 w-5 text-primary" />
                 <span className="text-xl font-bold">AfroConnect Marketplace</span>
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
-                Discover home-based and local African businesses near you. Order
-                food, book hair, find services, and support the diaspora.
+                Discover home-based and local African businesses near you. Order food, book hair, find services, and support the diaspora.
               </p>
             </div>
+
+            {/* ✅ NEW: Sell an item CTA */}
+            <Button onClick={openSellComposer} className="shrink-0">
+              <Plus className="h-4 w-4 mr-2" />
+              Sell an Item
+            </Button>
           </CardHeader>
 
           <CardContent className="space-y-3">
-            {/* SEARCH + FILTERS */}
             <div className="flex flex-col md:flex-row gap-3">
               <div className="flex-1 flex items-center gap-2">
                 <div className="relative flex-1">
@@ -183,13 +176,11 @@ export default function Marketplace({ onStartChat }: MarketplaceProps) {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Tap <span className="font-medium">Quick Ask</span> to message fast
-              about inventory, prices, delivery, and pickup.
+              Tap <span className="font-medium">Quick Ask</span> to message fast about inventory, prices, delivery, and pickup.
             </p>
           </CardContent>
         </Card>
 
-        {/* LISTINGS GRID */}
         <ScrollArea className="h-[calc(100vh-16rem)] pr-2">
           <div className="grid gap-4 md:grid-cols-2">
             {filteredListings.map((listing) => (
@@ -218,9 +209,7 @@ export default function Marketplace({ onStartChat }: MarketplaceProps) {
                   <p className="text-sm text-muted-foreground">{listing.description}</p>
 
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-primary">
-                      {listing.priceLabel}
-                    </span>
+                    <span className="text-sm font-semibold text-primary">{listing.priceLabel}</span>
                     {listing.isHomeBased && (
                       <Badge variant="secondary" className="text-[11px]">
                         Home-based business
@@ -228,17 +217,13 @@ export default function Marketplace({ onStartChat }: MarketplaceProps) {
                     )}
                   </div>
 
-                  {/* ✅ NEW: QUICK ASK BUTTONS */}
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
                       variant="outline"
                       className="h-8 px-2 text-xs flex items-center gap-1"
                       onClick={() =>
-                        startChat(
-                          listing.businessName,
-                          `Hi ${listing.businessName}, what do you have available today (inventory list)?`
-                        )
+                        startChat(listing.businessName, `Hi ${listing.businessName}, what do you have available today (inventory list)?`)
                       }
                     >
                       <PackageSearch className="h-4 w-4" />
@@ -250,10 +235,7 @@ export default function Marketplace({ onStartChat }: MarketplaceProps) {
                       variant="outline"
                       className="h-8 px-2 text-xs flex items-center gap-1"
                       onClick={() =>
-                        startChat(
-                          listing.businessName,
-                          `Hi ${listing.businessName}, please can you share your price list (or menu) and any specials?`
-                        )
+                        startChat(listing.businessName, `Hi ${listing.businessName}, please can you share your price list (or menu) and any specials?`)
                       }
                     >
                       <DollarSign className="h-4 w-4" />
@@ -265,10 +247,7 @@ export default function Marketplace({ onStartChat }: MarketplaceProps) {
                       variant="outline"
                       className="h-8 px-2 text-xs flex items-center gap-1"
                       onClick={() =>
-                        startChat(
-                          listing.businessName,
-                          `Hi ${listing.businessName}, do you offer delivery? If yes, what areas and what’s the fee/time?`
-                        )
+                        startChat(listing.businessName, `Hi ${listing.businessName}, do you offer delivery? If yes, what areas and what’s the fee/time?`)
                       }
                     >
                       <Truck className="h-4 w-4" />
@@ -280,10 +259,7 @@ export default function Marketplace({ onStartChat }: MarketplaceProps) {
                       variant="outline"
                       className="h-8 px-2 text-xs flex items-center gap-1"
                       onClick={() =>
-                        startChat(
-                          listing.businessName,
-                          `Hi ${listing.businessName}, what’s your pickup process and when is the best pickup time today?`
-                        )
+                        startChat(listing.businessName, `Hi ${listing.businessName}, what’s your pickup process and when is the best pickup time today?`)
                       }
                     >
                       <MapPinned className="h-4 w-4" />
@@ -296,11 +272,7 @@ export default function Marketplace({ onStartChat }: MarketplaceProps) {
                       View Details
                     </Button>
 
-                    <Button
-                      className="flex-1 flex items-center gap-1"
-                      size="sm"
-                      onClick={() => startChat(listing.businessName)}
-                    >
+                    <Button className="flex-1 flex items-center gap-1" size="sm" onClick={() => startChat(listing.businessName)}>
                       <MessageCircle className="h-4 w-4" />
                       Message Seller
                     </Button>

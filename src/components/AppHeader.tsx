@@ -1,26 +1,26 @@
 // src/components/AppHeader.tsx
-import React from "react";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Bell, Menu, MessageCircle, Search } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Bell, MessageCircle, Menu, ChevronDown, MapPin, Search } from "lucide-react";
 
-type Props = {
-  locationLabel: string;
+import { useAuth } from "@/hooks/useAuth";
+import { getCommunityLabel } from "@/lib/location";
 
-  displayName: string;
-  avatarUrl?: string;
+const LS_PROFILE = "afroconnect.profile";
 
-  isLoggedIn: boolean;
-  isLoggingIn: boolean;
-
-  onOpenLocation: () => void;
-  onOpenNotifications: () => void;
-  onGoMessages: () => void;
-  onOpenSearch: () => void;
-
-  onLogin: () => void;
-  onOpenMenu: () => void;
-};
+function readProfileLocal() {
+  try {
+    return JSON.parse(localStorage.getItem(LS_PROFILE) || "{}") as {
+      displayName?: string;
+      avatarUrl?: string;
+    };
+  } catch {
+    return {};
+  }
+}
 
 function initials(name: string) {
   return name
@@ -33,73 +33,147 @@ function initials(name: string) {
 }
 
 export default function AppHeader({
-  locationLabel,
-  displayName,
-  avatarUrl,
-  isLoggedIn,
-  isLoggingIn,
-  onOpenLocation,
-  onOpenNotifications,
-  onGoMessages,
-  onOpenSearch,
-  onLogin,
+  onOpenAuth,
   onOpenMenu,
-}: Props) {
+}: {
+  onOpenAuth?: () => void;
+  onOpenMenu?: () => void;
+}) {
+  const { user, status, signOut } = useAuth();
+  const isLoggedIn = !!user && status === "authenticated";
+
+  const routerLocation = useLocation();
+  const navigate = useNavigate();
+
+  // Reactive community label
+  const [communityLabel, setCommunityLabel] = useState(() => getCommunityLabel());
+  useEffect(() => {
+    const handler = () => setCommunityLabel(getCommunityLabel());
+    window.addEventListener("afroconnect.communityChanged", handler);
+    return () => window.removeEventListener("afroconnect.communityChanged", handler);
+  }, []);
+
+  // Reactive local profile (displayName + avatarUrl)
+  const [profile, setProfile] = useState(() => readProfileLocal());
+  useEffect(() => {
+    const handler = () => setProfile(readProfileLocal());
+    window.addEventListener("afroconnect.profileUpdated", handler);
+    return () => window.removeEventListener("afroconnect.profileUpdated", handler);
+  }, []);
+
+  const slogan = "Connecting Africans Globally, Building Communities";
+
+  async function handleLogout() {
+    await signOut();
+    navigate("/welcome", { replace: true });
+  }
+
+  // LOGGED OUT HEADER (Welcome)
+  if (!isLoggedIn) {
+    return (
+      <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">
+        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="h-10 w-10 rounded-2xl bg-orange-100 flex items-center justify-center font-bold shrink-0">
+              AC
+            </div>
+            <div className="leading-tight min-w-0">
+              <div className="text-sm font-semibold truncate">AfroConnect</div>
+              <div className="text-xs text-muted-foreground truncate">{slogan}</div>
+            </div>
+          </div>
+
+          <Button className="rounded-xl" onClick={onOpenAuth}>
+            Log in / Create account
+          </Button>
+        </div>
+      </header>
+    );
+  }
+
+  // LOGGED IN HEADER (All app pages)
+  const displayName = profile.displayName?.trim() || "My account";
+  const avatarUrl = profile.avatarUrl;
+
   return (
-    <header className="border-b bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/70 sticky top-0 z-50">
-      <div className="container mx-auto flex items-center justify-between h-14 px-4">
-        {/* LEFT: City/Area selector */}
+    <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">
+      <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between gap-3">
+        {/* LEFT: community label (click to change location) */}
         <button
-          type="button"
-          onClick={onOpenLocation}
-          className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-muted/60 transition"
+          className="flex items-center gap-3 rounded-xl px-2 py-1 hover:bg-muted/40 transition min-w-0"
+          onClick={() => navigate("/welcome")}
           title="Change location"
+          type="button"
         >
-          <span className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-            <MapPin className="h-4 w-4" />
-          </span>
-
-          <span className="font-semibold text-sm max-w-[220px] truncate">{locationLabel}</span>
-
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          <div className="h-9 w-9 rounded-2xl bg-orange-100 flex items-center justify-center font-bold shrink-0">
+            AC
+          </div>
+          <div className="leading-tight text-left min-w-0">
+            <div className="text-sm font-semibold truncate">AfroConnect</div>
+            <div className="text-xs text-muted-foreground truncate">{communityLabel}</div>
+          </div>
         </button>
 
-        {/* RIGHT */}
+        {/* RIGHT: icons + avatar + menu + logout */}
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" title="Search" onClick={onOpenSearch}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="rounded-xl"
+            aria-label="Search"
+            onClick={() => navigate("/search")}
+          >
             <Search className="h-5 w-5" />
           </Button>
 
-          <Button variant="ghost" size="icon" title="Notifications" onClick={onOpenNotifications}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="rounded-xl"
+            aria-label="Notifications"
+            onClick={() => navigate("/notifications")}
+          >
             <Bell className="h-5 w-5" />
           </Button>
 
-          <Button variant="ghost" size="icon" title="Messages" onClick={onGoMessages}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="rounded-xl"
+            aria-label="Messages"
+            onClick={() => navigate("/messages")}
+          >
             <MessageCircle className="h-5 w-5" />
           </Button>
 
-          {!isLoggedIn ? (
-            <>
-              <Button
-                onClick={onLogin}
-                disabled={isLoggingIn}
-                className="bg-gradient-to-r from-orange-600 to-green-600 hover:opacity-90 transition-opacity"
-              >
-                {isLoggingIn ? "Connecting..." : "Login"}
-              </Button>
+          {/* Avatar pill */}
+          <div className="flex items-center gap-2 rounded-xl border px-2 py-1.5">
+            <Avatar className="h-8 w-8">
+              {avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
+              <AvatarFallback>{initials(displayName || user?.email || "User")}</AvatarFallback>
+            </Avatar>
 
-              <Button variant="outline" size="icon" title="Menu" onClick={onOpenMenu}>
-                <Menu className="h-5 w-5" />
-              </Button>
-            </>
-          ) : (
-            <button type="button" onClick={onOpenMenu} className="rounded-full" title="Open menu">
-              <Avatar className="h-9 w-9">
-                {avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
-                <AvatarFallback>{initials(displayName)}</AvatarFallback>
-              </Avatar>
-            </button>
-          )}
+            <div className="hidden sm:block text-sm max-w-[160px] truncate">
+              {displayName}
+            </div>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-xl"
+              aria-label="Menu"
+              onClick={() => {
+                if (onOpenMenu) onOpenMenu();
+                else navigate("/menu");
+              }}
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+          </div>
+
+          <Button variant="outline" className="rounded-xl" onClick={handleLogout}>
+            Log out
+          </Button>
         </div>
       </div>
     </header>

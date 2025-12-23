@@ -22,13 +22,15 @@ type AuthContextValue = {
   signUpWithEmail: (email: string, password: string) => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
 
+  signInWithGoogle: () => Promise<void>;
+
   signInWithPhoneOtp: (phoneE164: string) => Promise<void>;
   verifyPhoneOtp: (phoneE164: string, token: string) => Promise<void>;
 
+  signOut: () => Promise<void>;
+
   upsertMyProfile: (p: { firstName: string; lastName: string }) => Promise<ProfileRow>;
   getMyProfile: () => Promise<ProfileRow | null>;
-
-  signOut: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -46,13 +48,23 @@ function saveProfileToLocal(profile: ProfileRow) {
   window.dispatchEvent(new Event("afroconnect.profileUpdated"));
 }
 
+function clearProfileLocal() {
+  localStorage.removeItem(LS_PROFILE);
+  window.dispatchEvent(new Event("afroconnect.profileUpdated"));
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [status, setStatus] = useState<AuthStatus>("loading");
 
   async function getMyProfile(): Promise<ProfileRow | null> {
-    const { data: s } = await supabase.auth.getSession();
+    const { data: s, error: sErr } = await supabase.auth.getSession();
+    if (sErr) {
+      console.error("[Auth] getSession error in getMyProfile:", sErr);
+      return null;
+    }
+
     const uid = s.session?.user?.id;
     if (!uid) return null;
 
@@ -66,11 +78,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("[Profile] getMyProfile error:", error);
       return null;
     }
+
     return (data as ProfileRow) ?? null;
   }
 
   async function upsertMyProfile(p: { firstName: string; lastName: string }): Promise<ProfileRow> {
-    const { data: s } = await supabase.auth.getSession();
+    const { data: s, error: sErr } = await supabase.auth.getSession();
+    if (sErr) {
+      console.error("[Auth] getSession error in upsertMyProfile:", sErr);
+      throw sErr;
+    }
+
     const u = s.session?.user;
     if (!u) throw new Error("No active session. Please log in again.");
 
@@ -106,6 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     (async () => {
       setStatus("loading");
+
       const { data, error } = await supabase.auth.getSession();
       if (!alive) return;
 
@@ -119,10 +138,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(data.session?.user ?? null);
       setStatus(data.session?.user ? "authenticated" : "unauthenticated");
 
-      // If logged in, try to load profile for UI display name
       if (data.session?.user) {
         const prof = await getMyProfile();
         if (prof) saveProfileToLocal(prof);
+      } else {
+        clearProfileLocal();
       }
     })();
 
@@ -134,6 +154,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (newSession?.user) {
         const prof = await getMyProfile();
         if (prof) saveProfileToLocal(prof);
+      } else {
+        clearProfileLocal();
       }
     });
 
@@ -141,6 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       alive = false;
       sub.subscription.unsubscribe();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const value = useMemo<AuthContextValue>(
@@ -152,13 +175,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUpWithEmail: async (email, password) => {
         setStatus("loading");
         const { error } = await supabase.auth.signUp({ email, password });
+
         if (error) {
           console.error("[Auth] signUp error:", error);
           setStatus("error");
           throw error;
         }
-        // Session may or may not exist depending on email-confirm settings.
-        // onAuthStateChange will update when session becomes active.
+
+        // Important: if email confirmation is ON, user may still be unauthenticated here.
         const { data } = await supabase.auth.getSession();
         setSession(data.session);
         setUser(data.session?.user ?? null);
@@ -168,54 +192,90 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithEmail: async (email, password) => {
         setStatus("loading");
         const { error } = await supabase.auth.signInWithPassword({ email, password });
+
         if (error) {
           console.error("[Auth] signInWithPassword error:", error);
           setStatus("error");
           throw error;
         }
-        // onAuthStateChange updates user/session
+
+        // onAuthStateChange will set authenticated; if it lags, avoid staying stuck
+        setStatus("unauthenticated");
+      },
+
+      signInWithGoogle: async () => {
+        setStatus("loading");
+
+        // For local dev, Supabase can usually infer redirect,
+        // but explicitly setting it avoids “nothing happens” issues.
+        const redirectTo = window.location.origin;
+
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo },
+        });
+
+        if (error) {
+          console.error("[Auth] signInWithOAuth(google) error:", error);
+          setStatus("error");
+          throw error;
+        }
+
+        // OAuth redirects away; no further code runs here in most flows.
+        setStatus("unauthenticated");
       },
 
       signInWithPhoneOtp: async (phoneE164) => {
         setStatus("loading");
         const { error } = await supabase.auth.signInWithOtp({ phone: phoneE164 });
+
         if (error) {
           console.error("[Auth] signInWithOtp error:", error);
           setStatus("error");
           throw error;
         }
+
+        // OTP sent, still not authenticated until verify
         setStatus("unauthenticated");
       },
 
       verifyPhoneOtp: async (phoneE164, token) => {
         setStatus("loading");
+
         const { error } = await supabase.auth.verifyOtp({
           phone: phoneE164,
           token,
           type: "sms",
         });
+
         if (error) {
           console.error("[Auth] verifyOtp error:", error);
           setStatus("error");
           throw error;
         }
-        // onAuthStateChange updates user/session
-      },
 
-      upsertMyProfile,
-      getMyProfile,
+        // onAuthStateChange will set authenticated
+        setStatus("unauthenticated");
+      },
 
       signOut: async () => {
         setStatus("loading");
         const { error } = await supabase.auth.signOut();
+
         if (error) {
           console.error("[Auth] signOut error:", error);
           setStatus("error");
           throw error;
         }
-        localStorage.removeItem(LS_PROFILE);
-        window.dispatchEvent(new Event("afroconnect.profileUpdated"));
+
+        setSession(null);
+        setUser(null);
+        setStatus("unauthenticated");
+        clearProfileLocal();
       },
+
+      upsertMyProfile,
+      getMyProfile,
     }),
     [user, session, status]
   );
