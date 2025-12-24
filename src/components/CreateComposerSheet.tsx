@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { X, Image as ImageIcon, Video as VideoIcon } from "lucide-react";
-import type { CreateKind } from "./CreateMenuSheet";
+import type { CreateKind } from "@/components/CreateMenuSheet";
 
 type MediaItem = {
   id: string;

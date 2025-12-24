@@ -1,29 +1,22 @@
 // src/components/AppHeader.tsx
-import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { Bell, Menu, MessageCircle, Search } from "lucide-react";
-
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Search, Bell, MessageCircle } from "lucide-react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { getCommunityLabel } from "@/lib/location";
 
-const LS_PROFILE = "afroconnect.profile";
+const LS_AVATAR_URL = "afroconnect.avatarUrl";
+const PROFILE_UPDATED_EVENT = "afroconnect.profileUpdated";
 
-function readProfileLocal() {
-  try {
-    return JSON.parse(localStorage.getItem(LS_PROFILE) || "{}") as {
-      displayName?: string;
-      avatarUrl?: string;
-    };
-  } catch {
-    return {};
-  }
-}
-
-function initials(name: string) {
-  return name
+function initials(nameOrEmail: string) {
+  const s = (nameOrEmail || "").trim();
+  if (!s) return "AC";
+  if (s.includes("@")) return s.slice(0, 2).toUpperCase();
+  return s
     .split(" ")
     .filter(Boolean)
     .map((w) => w[0])
@@ -32,148 +25,109 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-export default function AppHeader({
-  onOpenAuth,
-  onOpenMenu,
-}: {
-  onOpenAuth?: () => void;
-  onOpenMenu?: () => void;
-}) {
-  const { user, status, signOut } = useAuth();
+export default function AppHeader() {
+  const navigate = useNavigate();
+  const { user, status, signOut } = useAuth() as any; // if TS complains, type your hook properly
+
   const isLoggedIn = !!user && status === "authenticated";
 
-  const routerLocation = useLocation();
-  const navigate = useNavigate();
+  const [community, setCommunity] = useState(() => getCommunityLabel());
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(() => localStorage.getItem(LS_AVATAR_URL));
 
-  // Reactive community label
-  const [communityLabel, setCommunityLabel] = useState(() => getCommunityLabel());
+  const displayName = useMemo(() => {
+    // prefer saved profile displayName
+    try {
+      const raw = localStorage.getItem("afroconnect.profile");
+      if (raw) {
+        const p = JSON.parse(raw) as { displayName?: string };
+        if (p.displayName?.trim()) return p.displayName.trim();
+      }
+    } catch {
+      // ignore
+    }
+    return user?.name || user?.email || "Member";
+  }, [user]);
+
   useEffect(() => {
-    const handler = () => setCommunityLabel(getCommunityLabel());
-    window.addEventListener("afroconnect.communityChanged", handler);
-    return () => window.removeEventListener("afroconnect.communityChanged", handler);
-  }, []);
+    const onCommunity = () => setCommunity(getCommunityLabel());
+    const onProfile = () => setAvatarUrl(localStorage.getItem(LS_AVATAR_URL));
 
-  // Reactive local profile (displayName + avatarUrl)
-  const [profile, setProfile] = useState(() => readProfileLocal());
-  useEffect(() => {
-    const handler = () => setProfile(readProfileLocal());
-    window.addEventListener("afroconnect.profileUpdated", handler);
-    return () => window.removeEventListener("afroconnect.profileUpdated", handler);
-  }, []);
+    window.addEventListener("afroconnect.communityChanged", onCommunity);
+    window.addEventListener(PROFILE_UPDATED_EVENT, onProfile);
 
-  const slogan = "Connecting Africans Globally, Building Communities";
+    return () => {
+      window.removeEventListener("afroconnect.communityChanged", onCommunity);
+      window.removeEventListener(PROFILE_UPDATED_EVENT, onProfile);
+    };
+  }, []);
 
   async function handleLogout() {
-    await signOut();
-    navigate("/welcome", { replace: true });
+    try {
+      if (typeof signOut === "function") await signOut();
+    } finally {
+      // Always send them back to welcome to change city / login again
+      navigate("/welcome", { replace: true });
+    }
   }
-
-  // LOGGED OUT HEADER (Welcome)
-  if (!isLoggedIn) {
-    return (
-      <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">
-        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="h-10 w-10 rounded-2xl bg-orange-100 flex items-center justify-center font-bold shrink-0">
-              AC
-            </div>
-            <div className="leading-tight min-w-0">
-              <div className="text-sm font-semibold truncate">AfroConnect</div>
-              <div className="text-xs text-muted-foreground truncate">{slogan}</div>
-            </div>
-          </div>
-
-          <Button className="rounded-xl" onClick={onOpenAuth}>
-            Log in / Create account
-          </Button>
-        </div>
-      </header>
-    );
-  }
-
-  // LOGGED IN HEADER (All app pages)
-  const displayName = profile.displayName?.trim() || "My account";
-  const avatarUrl = profile.avatarUrl;
 
   return (
-    <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">
+    <header className="w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between gap-3">
-        {/* LEFT: community label (click to change location) */}
+        {/* Left: App + community */}
         <button
-          className="flex items-center gap-3 rounded-xl px-2 py-1 hover:bg-muted/40 transition min-w-0"
-          onClick={() => navigate("/welcome")}
-          title="Change location"
           type="button"
+          className="min-w-0 flex items-center gap-3 text-left"
+          onClick={() => navigate("/welcome")}
+          title="Change your community"
         >
-          <div className="h-9 w-9 rounded-2xl bg-orange-100 flex items-center justify-center font-bold shrink-0">
+          <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center text-xs font-semibold">
             AC
           </div>
-          <div className="leading-tight text-left min-w-0">
-            <div className="text-sm font-semibold truncate">AfroConnect</div>
-            <div className="text-xs text-muted-foreground truncate">{communityLabel}</div>
+          <div className="min-w-0">
+            <div className="font-semibold leading-tight">AfroConnect</div>
+            <div className="text-xs text-muted-foreground truncate">{community}</div>
           </div>
         </button>
 
-        {/* RIGHT: icons + avatar + menu + logout */}
+        {/* Right: icons + avatar menu */}
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-xl"
-            aria-label="Search"
-            onClick={() => navigate("/search")}
-          >
+          <Button variant="ghost" size="icon" aria-label="Search">
             <Search className="h-5 w-5" />
           </Button>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-xl"
-            aria-label="Notifications"
-            onClick={() => navigate("/notifications")}
-          >
+          <Button variant="ghost" size="icon" aria-label="Notifications">
             <Bell className="h-5 w-5" />
           </Button>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-xl"
-            aria-label="Messages"
-            onClick={() => navigate("/messages")}
-          >
+          <Button variant="ghost" size="icon" aria-label="Messages" onClick={() => navigate("/messages")}>
             <MessageCircle className="h-5 w-5" />
           </Button>
 
-          {/* Avatar pill */}
-          <div className="flex items-center gap-2 rounded-xl border px-2 py-1.5">
-            <Avatar className="h-8 w-8">
-              {avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
-              <AvatarFallback>{initials(displayName || user?.email || "User")}</AvatarFallback>
-            </Avatar>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className="ml-1">
+                <Avatar className="h-9 w-9">
+                  {avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
+                  <AvatarFallback>{initials(displayName)}</AvatarFallback>
+                </Avatar>
+              </button>
+            </DropdownMenuTrigger>
 
-            <div className="hidden sm:block text-sm max-w-[160px] truncate">
-              {displayName}
-            </div>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              className="rounded-xl"
-              aria-label="Menu"
-              onClick={() => {
-                if (onOpenMenu) onOpenMenu();
-                else navigate("/menu");
-              }}
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
-          </div>
-
-          <Button variant="outline" className="rounded-xl" onClick={handleLogout}>
-            Log out
-          </Button>
+            <DropdownMenuContent align="end" className="w-56">
+              <div className="px-3 py-2">
+                <div className="text-sm font-semibold truncate">{displayName}</div>
+                <div className="text-xs text-muted-foreground truncate">{user?.email || ""}</div>
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => navigate("/profile")}>My profile</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate("/settings")}>Settings</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate("/welcome")}>Change community</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {isLoggedIn ? (
+                <DropdownMenuItem onClick={handleLogout}>Log out</DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => navigate("/welcome")}>Log in</DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>

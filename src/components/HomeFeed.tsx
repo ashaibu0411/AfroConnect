@@ -9,8 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { getCommunityLabel } from "@/lib/location";
 
 import CreateMenuSheet, { type CreateKind } from "@/components/CreateMenuSheet";
-import CreateComposerSheet from "@/components/CreateComposerSheet";
-import type { ComposerPayload } from "@/components/CreateComposerSheet";
+import CreateComposerSheet, { type ComposerPayload } from "@/components/CreateComposerSheet";
 
 type Props = {
   onRequireLogin?: () => void;
@@ -24,9 +23,7 @@ type PostItem = {
   communityLabel: string;
   createdAt: number;
   likes?: number;
-
-  // Optional: basic metadata if you want later
-  kind?: CreateKind; // "post" | "ask" | "sell" | "event"
+  kind?: CreateKind;
   title?: string;
   price?: string;
   when?: string;
@@ -36,7 +33,6 @@ type PostItem = {
 
 const LS_POSTS = "afroconnect.posts.v1";
 const LS_PROFILE = "afroconnect.profile";
-const [createMenuOpen, setCreateMenuOpen] = useState(false);
 
 function safeParse<T>(raw: string | null, fallback: T): T {
   try {
@@ -78,29 +74,20 @@ export default function HomeFeed({ onRequireLogin, onGoToWelcome }: Props) {
   const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
   const [query, setQuery] = useState("");
 
-  // Composer state
+  // Menu + composer state
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerKind, setComposerKind] = useState<CreateKind>("post");
 
   const [posts, setPosts] = useState<PostItem[]>(() => {
     const existing = readPosts();
     if (existing.length) return existing;
-    <CreateMenuSheet
-  open={createMenuOpen}
-  onOpenChange={setCreateMenuOpen}
-  onPick={(k) => {
-    setCreateMenuOpen(false);
-    setComposerKind(k);
-    setComposerOpen(true);
-  }}
-/>
-    // Seed sample posts (demo only)
+
     const seeded: PostItem[] = [
       {
         id: uid(),
         authorName: "Guest",
-        content:
-          "Welcome to AfroConnect. Switch your location on the Welcome screen to preview other communities.",
+        content: "Welcome to AfroConnect. Switch your location on the Welcome screen to preview other communities.",
         communityLabel: "Colorado, United States",
         createdAt: Date.now() - 1000 * 60 * 60 * 10,
         likes: 0,
@@ -116,20 +103,20 @@ export default function HomeFeed({ onRequireLogin, onGoToWelcome }: Props) {
         kind: "post",
       },
     ];
+
     savePosts(seeded);
     return seeded;
   });
 
   useEffect(() => savePosts(posts), [posts]);
 
-  // Update community label when selection changes
   useEffect(() => {
     const handler = () => setCommunityLabel(getCommunityLabel());
     window.addEventListener("afroconnect.communityChanged", handler);
     return () => window.removeEventListener("afroconnect.communityChanged", handler);
   }, []);
 
-  // Listen for "open composer" events (used by FirstLoginOnboardingSheet)
+  // Optional: open composer from other parts of app
   useEffect(() => {
     const handler = (e: Event) => {
       const ce = e as CustomEvent<{ kind?: CreateKind; prefill?: string }>;
@@ -137,10 +124,7 @@ export default function HomeFeed({ onRequireLogin, onGoToWelcome }: Props) {
       const prefill = ce.detail?.prefill;
 
       setComposerKind(kind);
-
-      // One-time prefill channel the composer already supports
       if (prefill) (window as any).__AFROCONNECT_COMPOSER_PREFILL__ = prefill;
-
       setComposerOpen(true);
     };
 
@@ -153,14 +137,12 @@ export default function HomeFeed({ onRequireLogin, onGoToWelcome }: Props) {
 
     return posts
       .filter((p) => {
-        // Local/global filter
         if (tab === "local") {
           const a = (p?.communityLabel || "").trim().toLowerCase();
           const b = (communityLabel || "").trim().toLowerCase();
           if (a !== b) return false;
         }
 
-        // Search filter
         if (!q) return true;
         const content = (p?.content || "").toLowerCase();
         const author = (p?.authorName || "").toLowerCase();
@@ -174,19 +156,8 @@ export default function HomeFeed({ onRequireLogin, onGoToWelcome }: Props) {
     onRequireLogin?.();
   }
 
-  function openComposer(kind: CreateKind = "post") {
-    if (!isLoggedIn) return requestLogin();
-    setComposerKind(kind);
-    setComposerOpen(true);
-  }
-
   function onSubmitComposer(payload: ComposerPayload) {
-    // Build a post record from the composer payload
-    const displayName =
-      readDisplayNameFallback() ||
-      user?.name ||
-      user?.email ||
-      "Member";
+    const displayName = readDisplayNameFallback() || (user as any)?.name || user?.email || "Member";
 
     const newPost: PostItem = {
       id: uid(),
@@ -195,7 +166,6 @@ export default function HomeFeed({ onRequireLogin, onGoToWelcome }: Props) {
       communityLabel,
       createdAt: Date.now(),
       likes: 0,
-
       kind: payload.kind,
       title: payload.title,
       price: payload.price,
@@ -214,7 +184,16 @@ export default function HomeFeed({ onRequireLogin, onGoToWelcome }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Composer Sheet */}
+      <CreateMenuSheet
+        open={createMenuOpen}
+        onOpenChange={setCreateMenuOpen}
+        onPick={(k) => {
+          setCreateMenuOpen(false);
+          setComposerKind(k);
+          setComposerOpen(true);
+        }}
+      />
+
       <CreateComposerSheet
         open={composerOpen}
         onOpenChange={setComposerOpen}
@@ -225,16 +204,14 @@ export default function HomeFeed({ onRequireLogin, onGoToWelcome }: Props) {
         onSubmit={onSubmitComposer}
       />
 
-      {/* Guest banner */}
       {!isLoggedIn ? (
         <Card className="rounded-2xl border">
           <CardContent className="py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
             <div>
               <div className="font-semibold">Browsing as guest</div>
               <div className="text-sm text-muted-foreground">
-                Community:{" "}
-                <strong className="text-foreground">{communityLabel}</strong>. Log
-                in to post, like, comment, and message.
+                Community: <strong className="text-foreground">{communityLabel}</strong>. Log in to post, like, comment,
+                and message.
               </div>
             </div>
 
@@ -253,7 +230,6 @@ export default function HomeFeed({ onRequireLogin, onGoToWelcome }: Props) {
         </Card>
       ) : null}
 
-      {/* Feed header */}
       <Card className="rounded-2xl border shadow-sm">
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-4">
@@ -263,36 +239,20 @@ export default function HomeFeed({ onRequireLogin, onGoToWelcome }: Props) {
             </div>
 
             <div className="flex gap-2">
-              <Button
-                className="rounded-xl"
-                variant={tab === "local" ? "default" : "outline"}
-                onClick={() => setTab("local")}
-              >
+              <Button className="rounded-xl" variant={tab === "local" ? "default" : "outline"} onClick={() => setTab("local")}>
                 Local
               </Button>
-              <Button
-                className="rounded-xl"
-                variant={tab === "global" ? "default" : "outline"}
-                onClick={() => setTab("global")}
-              >
+              <Button className="rounded-xl" variant={tab === "global" ? "default" : "outline"} onClick={() => setTab("global")}>
                 Global
               </Button>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 mt-4">
-            <Button
-              className="rounded-xl"
-              variant={density === "comfortable" ? "default" : "outline"}
-              onClick={() => setDensity("comfortable")}
-            >
+            <Button className="rounded-xl" variant={density === "comfortable" ? "default" : "outline"} onClick={() => setDensity("comfortable")}>
               Comfortable
             </Button>
-            <Button
-              className="rounded-xl"
-              variant={density === "compact" ? "default" : "outline"}
-              onClick={() => setDensity("compact")}
-            >
+            <Button className="rounded-xl" variant={density === "compact" ? "default" : "outline"} onClick={() => setDensity("compact")}>
               Compact
             </Button>
           </div>
@@ -311,10 +271,7 @@ export default function HomeFeed({ onRequireLogin, onGoToWelcome }: Props) {
           {filtered.length === 0 ? (
             <div className="py-12 text-center">
               <div className="text-lg font-semibold">No posts found</div>
-              <div className="text-sm text-muted-foreground mt-1">
-                Try another search, or switch to Global.
-              </div>
-
+              <div className="text-sm text-muted-foreground mt-1">Try another search, or switch to Global.</div>
               <div className="mt-4">
                 <Button className="rounded-xl" onClick={requestLogin}>
                   Login to Post
@@ -335,28 +292,18 @@ export default function HomeFeed({ onRequireLogin, onGoToWelcome }: Props) {
                       </div>
                     ) : null}
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {new Date(p.createdAt).toLocaleString()}
-                  </div>
+                  <div className="text-xs text-muted-foreground">{new Date(p.createdAt).toLocaleString()}</div>
                 </div>
 
-                <div className={`mt-3 ${density === "compact" ? "text-sm" : "text-base"}`}>
-                  {p.content}
-                </div>
+                <div className={`mt-3 ${density === "compact" ? "text-sm" : "text-base"}`}>{p.content}</div>
 
-                {/* Optional media preview (images only; videos are supported by composer but you can expand this later) */}
                 {p.media?.length ? (
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     {p.media
                       .filter((m) => m.kind === "image")
                       .slice(0, 4)
                       .map((m, idx) => (
-                        <img
-                          key={`${p.id}-${idx}`}
-                          src={m.url}
-                          alt={m.name}
-                          className="rounded-xl border h-40 w-full object-cover"
-                        />
+                        <img key={`${p.id}-${idx}`} src={m.url} alt={m.name} className="rounded-xl border h-40 w-full object-cover" />
                       ))}
                   </div>
                 ) : null}
@@ -376,15 +323,14 @@ export default function HomeFeed({ onRequireLogin, onGoToWelcome }: Props) {
             ))
           )}
 
-          {/* Floating Pencil Button */}
           <div className="fixed bottom-8 right-8">
             <Button
               className="h-14 w-14 rounded-full shadow-md"
               onClick={() => {
-                    if (!isLoggedIn) return requestLogin();
-                  setCreateMenuOpen(true);
-                               }}
-              title={isLoggedIn ? "Create post" : "Log in to post"}
+                if (!isLoggedIn) return requestLogin();
+                setCreateMenuOpen(true);
+              }}
+              title={isLoggedIn ? "Create" : "Log in to create"}
             >
               <Pencil className="h-6 w-6" />
             </Button>

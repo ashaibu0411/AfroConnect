@@ -14,7 +14,7 @@ export default function SplashScreen({
   onDone,
   logoSrc,
   appName = "AfroConnect",
-  tagline = "Connecting Africans, Building Communities.",
+  tagline = "Connecting Africans Globally, Building Communities.",
 }: Props) {
   useEffect(() => {
     const t = window.setTimeout(() => onDone(), durationMs);
