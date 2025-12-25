@@ -19,14 +19,18 @@ import MyProfilePage from "@/pages/ProfilePage";
 import MySettingsPage from "@/pages/SettingsPage";
 import HelpCenterPage from "@/pages/HelpCenterPage";
 
-// ✅ Add these pages if they already exist in your project:
+// These pages exist in your project per your note:
 import SearchPage from "@/pages/SearchPage";
 import NotificationsPage from "@/pages/NotificationsPage";
 import AddBusinessPage from "@/pages/AddBusinessPage";
 
 export default function App() {
   const { status, user } = useAuth();
+
   const isLoggedIn = !!user && status === "authenticated";
+
+  // ✅ auth is "ready" once it's not loading/idle
+  const authReady = status !== "loading" && status !== "idle";
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -38,12 +42,21 @@ export default function App() {
     if (isLoggedIn) setLoginOpen(false);
   }, [isLoggedIn]);
 
-  // Routing rules (keep as-is)
+  // ✅ Routing rules — guarded so it doesn't "snap back"
   useEffect(() => {
+    if (!authReady) return;
+
     const onWelcome = location.pathname === "/welcome";
-    if (!isLoggedIn && !onWelcome) navigate("/welcome", { replace: true });
-    if (isLoggedIn && onWelcome) navigate("/", { replace: true });
-  }, [isLoggedIn, location.pathname, navigate]);
+
+    if (!isLoggedIn && !onWelcome) {
+      navigate("/welcome", { replace: true });
+      return;
+    }
+
+    if (isLoggedIn && onWelcome) {
+      navigate("/", { replace: true });
+    }
+  }, [authReady, isLoggedIn, location.pathname, navigate]);
 
   // Go to onboarding when requested
   useEffect(() => {
@@ -100,7 +113,6 @@ export default function App() {
           }
         />
 
-        {/* ✅ Add Business route */}
         <Route
           path="/add-business"
           element={
@@ -173,7 +185,6 @@ export default function App() {
           }
         />
 
-        {/* ✅ Search + Notifications routes */}
         <Route
           path="/search"
           element={
@@ -182,6 +193,7 @@ export default function App() {
             </AppLayout>
           }
         />
+
         <Route
           path="/notifications"
           element={

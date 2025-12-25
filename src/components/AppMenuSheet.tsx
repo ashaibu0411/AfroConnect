@@ -17,9 +17,10 @@ import {
   User,
   CalendarDays,
   Settings,
-  PlusCircle,
-  Bell,
   Search,
+  Bell,
+  LogOut,
+  PlusCircle,
   MapPin,
 } from "lucide-react";
 
@@ -30,6 +31,7 @@ type Props = {
   displayName: string;
   communityName: string;
   avatarUrl?: string;
+  onLogout?: () => void; // optional hook if you want sheet logout to call your auth signOut
 };
 
 function initials(name: string) {
@@ -71,13 +73,13 @@ export default function AppMenuSheet({
   displayName,
   communityName,
   avatarUrl,
+  onLogout,
 }: Props) {
   const navigate = useNavigate();
 
-  // ✅ Fix: close sheet first, then navigate next frame (prevents snap-back)
   const go = (path: string) => {
     onOpenChange(false);
-    requestAnimationFrame(() => navigate(path));
+    navigate(path);
   };
 
   return (
@@ -93,7 +95,10 @@ export default function AppMenuSheet({
 
             <div className="min-w-0">
               <p className="text-base font-semibold truncate">{displayName}</p>
-              <p className="text-xs text-muted-foreground truncate">{communityName}</p>
+              <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                <MapPin className="h-3.5 w-3.5" />
+                {communityName}
+              </p>
             </div>
           </div>
         </div>
@@ -106,19 +111,18 @@ export default function AppMenuSheet({
           <div className="px-3 py-3 space-y-1">
             <MenuItem icon={<Home className="h-4 w-4" />} label="Home" onClick={() => go("/")} />
             <MenuItem icon={<Store className="h-4 w-4" />} label="Marketplace" onClick={() => go("/marketplace")} />
+
             <MenuItem icon={<Building2 className="h-4 w-4" />} label="Businesses" onClick={() => go("/business")} />
             <MenuItem icon={<PlusCircle className="h-4 w-4" />} label="Add a business" onClick={() => go("/add-business")} />
+
             <MenuItem icon={<Users className="h-4 w-4" />} label="Groups" onClick={() => go("/groups")} />
             <MenuItem icon={<GraduationCap className="h-4 w-4" />} label="Students" onClick={() => go("/students")} />
             <MenuItem icon={<MessageCircle className="h-4 w-4" />} label="Messages" onClick={() => go("/messages")} />
             <MenuItem icon={<CalendarDays className="h-4 w-4" />} label="Events" onClick={() => go("/events")} />
 
-            {/* Optional routes: only keep if you added these in App.tsx */}
+            {/* Optional quick links */}
             <MenuItem icon={<Search className="h-4 w-4" />} label="Search" onClick={() => go("/search")} />
             <MenuItem icon={<Bell className="h-4 w-4" />} label="Notifications" onClick={() => go("/notifications")} />
-
-            {/* Optional: only keep if you have this route/page */}
-            <MenuItem icon={<MapPin className="h-4 w-4" />} label="Change community" onClick={() => go("/change-community")} />
           </div>
 
           <Separator />
@@ -128,6 +132,22 @@ export default function AppMenuSheet({
             <MenuItem icon={<User className="h-4 w-4" />} label="My profile" onClick={() => go("/profile")} />
             <MenuItem icon={<Settings className="h-4 w-4" />} label="Settings" onClick={() => go("/settings")} />
             <MenuItem icon={<HelpCircle className="h-4 w-4" />} label="Help Center" onClick={() => go("/help")} />
+          </div>
+
+          <Separator />
+
+          {/* COMMUNITY / LOGOUT */}
+          <div className="px-3 py-3 space-y-1">
+            <MenuItem icon={<MapPin className="h-4 w-4" />} label="Change community" onClick={() => go("/welcome")} />
+            <MenuItem
+              icon={<LogOut className="h-4 w-4" />}
+              label="Log out"
+              onClick={() => {
+                onOpenChange(false);
+                if (onLogout) onLogout();
+                else go("/welcome");
+              }}
+            />
           </div>
         </div>
 

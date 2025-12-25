@@ -1,4 +1,4 @@
-// src/components/ProfilePage.tsx
+// src/pages/ProfilePage.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -62,7 +62,9 @@ function readProfile(): ProfileData {
     interests: "",
     avatarUrl: localStorage.getItem(LS_AVATAR_URL) || undefined,
   };
+
   const p = safeParse<ProfileData>(localStorage.getItem(LS_PROFILE), fallback);
+
   return {
     ...fallback,
     ...p,
@@ -146,8 +148,10 @@ export default function ProfilePage({ communityLabel }: Props) {
 
       const nextProfile: ProfileData = { ...profile, avatarUrl: dataUrl };
       saveProfile(nextProfile);
+
       setProfile(nextProfile);
 
+      window.dispatchEvent(new Event(PROFILE_UPDATED_EVENT));
       toast.success("Profile photo updated.");
     };
     reader.onerror = () => toast.error("Failed to read the image. Try a different file.");
@@ -166,6 +170,7 @@ export default function ProfilePage({ communityLabel }: Props) {
     setProfile(clean);
     setEditing(false);
 
+    window.dispatchEvent(new Event(PROFILE_UPDATED_EVENT));
     toast.success("Profile saved.");
   };
 
@@ -256,6 +261,7 @@ export default function ProfilePage({ communityLabel }: Props) {
                     <span className="font-medium">Profile Progress</span>
                     <span className="text-muted-foreground">{profileProgress.pct}%</span>
                   </div>
+
                   <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
                     <div className="h-2 bg-primary" style={{ width: `${profileProgress.pct}%` }} />
                   </div>
@@ -356,7 +362,7 @@ export default function ProfilePage({ communityLabel }: Props) {
                           <p className="text-sm">{p.content}</p>
 
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                            <span>♥️ {p.stats.likes}</span>
+                            <span>♥ {p.stats.likes}</span>
                             <span>💬 {p.stats.comments}</span>
                           </div>
 
@@ -513,7 +519,7 @@ export default function ProfilePage({ communityLabel }: Props) {
         </Card>
 
         <div className="text-center text-xs text-muted-foreground py-8">
-          ©️ {new Date().getFullYear()} AfroConnect. Built with ❤️ for the African diaspora.
+          © {new Date().getFullYear()} AfroConnect. Built with ❤️ for the African diaspora.
         </div>
       </div>
     </div>

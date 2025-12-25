@@ -31,7 +31,11 @@ function initials(nameOrEmail: string) {
     .toUpperCase();
 }
 
-export default function AppHeader() {
+type Props = {
+  onOpenAuth?: () => void;
+};
+
+export default function AppHeader({ onOpenAuth }: Props) {
   const navigate = useNavigate();
   const { user, status, signOut } = useAuth() as any;
 
@@ -52,7 +56,7 @@ export default function AppHeader() {
     } catch {
       // ignore
     }
-    return user?.name || user?.email || "Member";
+    return user?.name || user?.email || user?.phone || "Member";
   }, [user]);
 
   useEffect(() => {
@@ -74,11 +78,6 @@ export default function AppHeader() {
     } finally {
       navigate("/welcome", { replace: true });
     }
-  }
-
-  // ✅ Close dropdown first, then navigate next frame (prevents snap-back)
-  function go(path: string) {
-    requestAnimationFrame(() => navigate(path));
   }
 
   return (
@@ -106,7 +105,7 @@ export default function AppHeader() {
             variant="ghost"
             size="icon"
             aria-label="Search"
-            onClick={() => go("/search")}
+            onClick={() => navigate("/search")}
           >
             <Search className="h-5 w-5" />
           </Button>
@@ -115,7 +114,7 @@ export default function AppHeader() {
             variant="ghost"
             size="icon"
             aria-label="Notifications"
-            onClick={() => go("/notifications")}
+            onClick={() => navigate("/notifications")}
           >
             <Bell className="h-5 w-5" />
           </Button>
@@ -124,7 +123,7 @@ export default function AppHeader() {
             variant="ghost"
             size="icon"
             aria-label="Messages"
-            onClick={() => go("/messages")}
+            onClick={() => navigate("/messages")}
           >
             <MessageCircle className="h-5 w-5" />
           </Button>
@@ -142,57 +141,24 @@ export default function AppHeader() {
             <DropdownMenuContent align="end" className="w-56">
               <div className="px-3 py-2">
                 <div className="text-sm font-semibold truncate">{displayName}</div>
-                <div className="text-xs text-muted-foreground truncate">{user?.email || ""}</div>
+                <div className="text-xs text-muted-foreground truncate">
+                  {user?.email || user?.phone || ""}
+                </div>
               </div>
 
               <DropdownMenuSeparator />
 
-              <DropdownMenuItem
-                onSelect={(e) => {
-                  e.preventDefault();
-                  go("/profile");
-                }}
-              >
-                My profile
-              </DropdownMenuItem>
-
-              <DropdownMenuItem
-                onSelect={(e) => {
-                  e.preventDefault();
-                  go("/settings");
-                }}
-              >
-                Settings
-              </DropdownMenuItem>
-
-              <DropdownMenuItem
-                onSelect={(e) => {
-                  e.preventDefault();
-                  go("/welcome");
-                }}
-              >
-                Change community
-              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate("/profile")}>My profile</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate("/settings")}>Settings</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate("/welcome")}>Change community</DropdownMenuItem>
 
               <DropdownMenuSeparator />
 
               {isLoggedIn ? (
-                <DropdownMenuItem
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    void handleLogout();
-                  }}
-                >
-                  Log out
-                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleLogout}>Log out</DropdownMenuItem>
               ) : (
-                <DropdownMenuItem
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    go("/welcome");
-                  }}
-                >
-                  Log in
+                <DropdownMenuItem onClick={() => (onOpenAuth ? onOpenAuth() : navigate("/welcome"))}>
+                  Log in / Create account
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
