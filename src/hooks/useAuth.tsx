@@ -1,5 +1,5 @@
 // src/hooks/useAuth.tsx
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
@@ -19,17 +19,16 @@ type AuthContextValue = {
   session: Session | null;
   status: AuthStatus;
 
-  signUpWithEmail: (email: string, password: string) => Promise<void>;
-  signInWithEmail: (email: string, password: string) => Promise<void>;
-
+  signUpWithEmail: (email: string, password: string) => Promise<Session | null>;
+  signInWithEmail: (email: string, password: string) => Promise<Session>;
   signInWithGoogle: () => Promise<void>;
 
   signInWithPhoneOtp: (phoneE164: string) => Promise<void>;
-  verifyPhoneOtp: (phoneE164: string, token: string) => Promise<void>;
+  verifyPhoneOtp: (phoneE164: string, token: string) => Promise<Session>;
 
   signOut: () => Promise<void>;
 
-  upsertMyProfile: (p: { firstName: string; lastName: string }) => Promise<ProfileRow>;
+  upsertMyProfile: (p: { firstName: string; lastName: string; displayName?: string }) => Promise<ProfileRow>;
   getMyProfile: () => Promise<ProfileRow | null>;
 };
 
@@ -53,21 +52,13 @@ function clearProfileLocal() {
   window.dispatchEvent(new Event("afroconnect.profileUpdated"));
 }
 
-// Helps ensure we never stay stuck forever in “loading”
-function withTimeout<T>(p: Promise<T>, ms: number, label: string) {
-  return new Promise<T>((resolve, reject) => {
-    const id = window.setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-    p.then(
-      (v) => {
-        window.clearTimeout(id);
-        resolve(v);
-      },
-      (e) => {
-        window.clearTimeout(id);
-        reject(e);
-      }
-    );
-  });
+async function safeGetSession(): Promise<Session | null> {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    console.error("[Auth] getSession error:", error);
+    return null;
+  }
+  return data.session ?? null;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -75,145 +66,97 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [status, setStatus] = useState<AuthStatus>("loading");
 
-  const syncingRef = useRef(false);
-
   async function getMyProfile(): Promise<ProfileRow | null> {
-    try {
-      const { data: s, error: sErr } = await supabase.auth.getSession();
-      if (sErr) return null;
+    const s = await safeGetSession();
+    const uid = s?.user?.id;
+    if (!uid) return null;
 
-      const uid = s.session?.user?.id;
-      if (!uid) return null;
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, first_name, last_name, display_name, avatar_url")
+      .eq("id", uid)
+      .maybeSingle();
 
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, first_name, last_name, display_name, avatar_url")
-        .eq("id", uid)
-        .maybeSingle();
-
-      if (error) return null;
-      return (data as ProfileRow) ?? null;
-    } catch {
+    if (error) {
+      console.error("[Profile] getMyProfile error:", error);
       return null;
     }
+    return (data as ProfileRow) ?? null;
   }
 
-  // src/hooks/useAuth.tsx
-async function upsertMyProfile(p: {
-  firstName: string;
-  lastName: string;
-  handle: string;                // ✅ new
-  interests?: string[];          // ✅ optional
-  onboardingComplete?: boolean;  // ✅ optional
-}): Promise<ProfileRow & { handle?: string | null; interests?: string[]; onboarding_complete?: boolean }> {
-  const { data: s, error: sErr } = await supabase.auth.getSession();
-  if (sErr) {
-    console.error("[Auth] getSession error in upsertMyProfile:", sErr);
-    throw sErr;
+  async function upsertMyProfile(p: { firstName: string; lastName: string; displayName?: string }): Promise<ProfileRow> {
+    const s = await safeGetSession();
+    const u = s?.user;
+    if (!u) throw new Error("No active session. Please log in again.");
+
+    const first = (p.firstName || "").trim();
+    const last = (p.lastName || "").trim();
+    const display =
+      (p.displayName || "").trim() || `${first} ${last}`.trim() || u.email || u.phone || "Member";
+
+    const payload = {
+      id: u.id,
+      first_name: first,
+      last_name: last,
+      display_name: display,
+      avatar_url: null,
+    };
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .upsert(payload, { onConflict: "id" })
+      .select("id, first_name, last_name, display_name, avatar_url")
+      .single();
+
+    if (error) {
+      console.error("[Profile] upsert error:", error);
+      throw error;
+    }
+
+    saveProfileToLocal(data as ProfileRow);
+    return data as ProfileRow;
   }
 
-  const u = s.session?.user;
-  if (!u) throw new Error("No active session. Please log in again.");
+  // Initial load + auth listener
+  useEffect(() => {
+    let alive = true;
 
-  const first = p.firstName.trim();
-  const last = p.lastName.trim();
-  const handle = p.handle.trim();
-  const display = handle || `${first} ${last}`.trim();
+    (async () => {
+      setStatus("loading");
 
-  const payload: any = {
-    id: u.id,
-    first_name: first,
-    last_name: last,
-    display_name: display,
-    handle: handle || null,
-  };
+      const s = await safeGetSession();
+      if (!alive) return;
 
-  if (Array.isArray(p.interests)) payload.interests = p.interests;
-  if (typeof p.onboardingComplete === "boolean") payload.onboarding_complete = p.onboardingComplete;
+      setSession(s);
+      setUser(s?.user ?? null);
+      setStatus(s?.user ? "authenticated" : "unauthenticated");
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .upsert(payload, { onConflict: "id" })
-    .select("id, first_name, last_name, display_name, avatar_url, handle, interests, onboarding_complete")
-    .single();
-
-  if (error) {
-    console.error("[Profile] upsert error:", error);
-    throw error;
-  }
-
-  // keep your local save (if you already have it)
-  localStorage.setItem(
-    "afroconnect.profile",
-    JSON.stringify({
-      displayName: data.display_name,
-      avatarUrl: data.avatar_url ?? undefined,
-    })
-  );
-  window.dispatchEvent(new Event("afroconnect.profileUpdated"));
-
-  return data;
-}
-
-  async function syncSessionState() {
-    if (syncingRef.current) return;
-    syncingRef.current = true;
-
-    try {
-      // If Supabase env is wrong, this can hang/fail — timeout prevents “forever loading”.
-      const { data, error } = await withTimeout(supabase.auth.getSession(), 6000, "supabase.auth.getSession");
-
-      if (error) {
-        console.error("[Auth] getSession error:", error);
-        setSession(null);
-        setUser(null);
-        setStatus("unauthenticated"); // don’t brick UI
-        clearProfileLocal();
-        return;
-      }
-
-      const sess = data.session ?? null;
-      const u = sess?.user ?? null;
-
-      setSession(sess);
-      setUser(u);
-      setStatus(u ? "authenticated" : "unauthenticated");
-
-      if (u) {
+      if (s?.user) {
         const prof = await getMyProfile();
         if (prof) saveProfileToLocal(prof);
       } else {
         clearProfileLocal();
       }
-    } catch (e) {
-      console.error("[Auth] syncSessionState failed:", e);
-      setSession(null);
-      setUser(null);
-      setStatus("unauthenticated"); // do not stay stuck in loading
-      clearProfileLocal();
-    } finally {
-      syncingRef.current = false;
-    }
-  }
-
-  useEffect(() => {
-    let alive = true;
-
-    (async () => {
-      if (!alive) return;
-      setStatus("loading");
-      await syncSessionState();
     })();
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, _newSession) => {
-      if (!alive) return;
-      await syncSessionState();
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+      setSession(newSession);
+      setUser(newSession?.user ?? null);
+      setStatus(newSession?.user ? "authenticated" : "unauthenticated");
+
+      if (newSession?.user) {
+        const prof = await getMyProfile();
+        if (prof) saveProfileToLocal(prof);
+      } else {
+        clearProfileLocal();
+      }
     });
 
     return () => {
       alive = false;
       sub.subscription.unsubscribe();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const value = useMemo<AuthContextValue>(
@@ -224,36 +167,48 @@ async function upsertMyProfile(p: {
 
       signUpWithEmail: async (email, password) => {
         setStatus("loading");
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({ email, password });
+
         if (error) {
-          setStatus("unauthenticated");
+          console.error("[Auth] signUp error:", error);
+          setStatus("error");
           throw error;
         }
-        await syncSessionState(); // may remain unauthenticated if email confirm enabled
+
+        // IMPORTANT:
+        // - If email confirmation is ON, data.session is null.
+        // - If OFF, you get a session immediately.
+        const s = data.session ?? (await safeGetSession());
+        setSession(s);
+        setUser(s?.user ?? null);
+        setStatus(s?.user ? "authenticated" : "unauthenticated");
+        return s ?? null;
       },
 
       signInWithEmail: async (email, password) => {
         setStatus("loading");
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
         if (error) {
-          setStatus("unauthenticated");
+          console.error("[Auth] signInWithPassword error:", error);
+          setStatus("error");
           throw error;
         }
 
-        // reflect immediately
-        const sess = data.session ?? null;
-        const u = sess?.user ?? null;
-        setSession(sess);
-        setUser(u);
-        setStatus(u ? "authenticated" : "unauthenticated");
+        const s = data.session ?? (await safeGetSession());
+        if (!s) {
+          setStatus("unauthenticated");
+          throw new Error("Login failed to create a session. Please try again.");
+        }
 
-        await syncSessionState();
+        setSession(s);
+        setUser(s.user);
+        setStatus("authenticated");
+        return s;
       },
 
       signInWithGoogle: async () => {
         setStatus("loading");
-
-        // Make sure this exact origin is in Supabase Auth -> URL Configuration -> Redirect URLs
         const redirectTo = window.location.origin;
 
         const { error } = await supabase.auth.signInWithOAuth({
@@ -262,44 +217,69 @@ async function upsertMyProfile(p: {
         });
 
         if (error) {
-          setStatus("unauthenticated");
+          console.error("[Auth] signInWithOAuth(google) error:", error);
+          setStatus("error");
           throw error;
         }
-        // Redirect happens; state sync on return.
+
+        // OAuth redirects away
+        setStatus("unauthenticated");
       },
 
       signInWithPhoneOtp: async (phoneE164) => {
         setStatus("loading");
         const { error } = await supabase.auth.signInWithOtp({ phone: phoneE164 });
+
         if (error) {
-          setStatus("unauthenticated");
+          console.error("[Auth] signInWithOtp error:", error);
+          setStatus("error");
           throw error;
         }
+
         setStatus("unauthenticated");
       },
 
       verifyPhoneOtp: async (phoneE164, token) => {
         setStatus("loading");
-        const { error } = await supabase.auth.verifyOtp({
+
+        const { data, error } = await supabase.auth.verifyOtp({
           phone: phoneE164,
           token,
           type: "sms",
         });
+
         if (error) {
-          setStatus("unauthenticated");
+          console.error("[Auth] verifyOtp error:", error);
+          setStatus("error");
           throw error;
         }
-        await syncSessionState();
+
+        const s = data.session ?? (await safeGetSession());
+        if (!s) {
+          setStatus("unauthenticated");
+          throw new Error("OTP verified, but no session was created. Check Supabase Phone Auth settings.");
+        }
+
+        setSession(s);
+        setUser(s.user);
+        setStatus("authenticated");
+        return s;
       },
 
       signOut: async () => {
         setStatus("loading");
         const { error } = await supabase.auth.signOut();
+
         if (error) {
+          console.error("[Auth] signOut error:", error);
           setStatus("error");
           throw error;
         }
-        await syncSessionState();
+
+        setSession(null);
+        setUser(null);
+        setStatus("unauthenticated");
+        clearProfileLocal();
       },
 
       upsertMyProfile,

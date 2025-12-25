@@ -19,6 +19,11 @@ import MyProfilePage from "@/pages/ProfilePage";
 import MySettingsPage from "@/pages/SettingsPage";
 import HelpCenterPage from "@/pages/HelpCenterPage";
 
+// ✅ Add these pages if they already exist in your project:
+import SearchPage from "@/pages/SearchPage";
+import NotificationsPage from "@/pages/NotificationsPage";
+import AddBusinessPage from "@/pages/AddBusinessPage";
+
 export default function App() {
   const { status, user } = useAuth();
   const isLoggedIn = !!user && status === "authenticated";
@@ -33,20 +38,19 @@ export default function App() {
     if (isLoggedIn) setLoginOpen(false);
   }, [isLoggedIn]);
 
-  // Routing rules
+  // Routing rules (keep as-is)
   useEffect(() => {
     const onWelcome = location.pathname === "/welcome";
     if (!isLoggedIn && !onWelcome) navigate("/welcome", { replace: true });
     if (isLoggedIn && onWelcome) navigate("/", { replace: true });
   }, [isLoggedIn, location.pathname, navigate]);
 
-  // inside App()
-useEffect(() => {
-  const go = () => navigate("/onboarding");
-  window.addEventListener("afroconnect.onboardingNeeded", go);
-  return () => window.removeEventListener("afroconnect.onboardingNeeded", go);
-}, [navigate]);
-
+  // Go to onboarding when requested
+  useEffect(() => {
+    const go = () => navigate("/onboarding");
+    window.addEventListener("afroconnect.onboardingNeeded", go);
+    return () => window.removeEventListener("afroconnect.onboardingNeeded", go);
+  }, [navigate]);
 
   return (
     <>
@@ -72,10 +76,12 @@ useEffect(() => {
             </AppLayout>
           }
         />
+
         <Route
-  path="/onboarding"
-  element={<OnboardingInterests onDone={() => navigate("/", { replace: true })} />}
+          path="/onboarding"
+          element={<OnboardingInterests onDone={() => navigate("/", { replace: true })} />}
         />
+
         <Route
           path="/marketplace"
           element={
@@ -84,6 +90,7 @@ useEffect(() => {
             </AppLayout>
           }
         />
+
         <Route
           path="/business"
           element={
@@ -92,6 +99,17 @@ useEffect(() => {
             </AppLayout>
           }
         />
+
+        {/* ✅ Add Business route */}
+        <Route
+          path="/add-business"
+          element={
+            <AppLayout onOpenAuth={() => setLoginOpen(true)}>
+              <AddBusinessPage />
+            </AppLayout>
+          }
+        />
+
         <Route
           path="/groups"
           element={
@@ -100,6 +118,7 @@ useEffect(() => {
             </AppLayout>
           }
         />
+
         <Route
           path="/students"
           element={
@@ -108,6 +127,7 @@ useEffect(() => {
             </AppLayout>
           }
         />
+
         <Route
           path="/messages"
           element={
@@ -116,6 +136,7 @@ useEffect(() => {
             </AppLayout>
           }
         />
+
         <Route
           path="/events"
           element={
@@ -124,6 +145,7 @@ useEffect(() => {
             </AppLayout>
           }
         />
+
         <Route
           path="/profile"
           element={
@@ -132,6 +154,7 @@ useEffect(() => {
             </AppLayout>
           }
         />
+
         <Route
           path="/settings"
           element={
@@ -140,11 +163,30 @@ useEffect(() => {
             </AppLayout>
           }
         />
+
         <Route
           path="/help"
           element={
             <AppLayout onOpenAuth={() => setLoginOpen(true)}>
               <HelpCenterPage />
+            </AppLayout>
+          }
+        />
+
+        {/* ✅ Search + Notifications routes */}
+        <Route
+          path="/search"
+          element={
+            <AppLayout onOpenAuth={() => setLoginOpen(true)}>
+              <SearchPage />
+            </AppLayout>
+          }
+        />
+        <Route
+          path="/notifications"
+          element={
+            <AppLayout onOpenAuth={() => setLoginOpen(true)}>
+              <NotificationsPage />
             </AppLayout>
           }
         />

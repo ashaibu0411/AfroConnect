@@ -17,6 +17,10 @@ import {
   User,
   CalendarDays,
   Settings,
+  PlusCircle,
+  Bell,
+  Search,
+  MapPin,
 } from "lucide-react";
 
 type Props = {
@@ -70,9 +74,10 @@ export default function AppMenuSheet({
 }: Props) {
   const navigate = useNavigate();
 
+  // ✅ Fix: close sheet first, then navigate next frame (prevents snap-back)
   const go = (path: string) => {
     onOpenChange(false);
-    navigate(path);
+    requestAnimationFrame(() => navigate(path));
   };
 
   return (
@@ -102,10 +107,18 @@ export default function AppMenuSheet({
             <MenuItem icon={<Home className="h-4 w-4" />} label="Home" onClick={() => go("/")} />
             <MenuItem icon={<Store className="h-4 w-4" />} label="Marketplace" onClick={() => go("/marketplace")} />
             <MenuItem icon={<Building2 className="h-4 w-4" />} label="Businesses" onClick={() => go("/business")} />
+            <MenuItem icon={<PlusCircle className="h-4 w-4" />} label="Add a business" onClick={() => go("/add-business")} />
             <MenuItem icon={<Users className="h-4 w-4" />} label="Groups" onClick={() => go("/groups")} />
             <MenuItem icon={<GraduationCap className="h-4 w-4" />} label="Students" onClick={() => go("/students")} />
             <MenuItem icon={<MessageCircle className="h-4 w-4" />} label="Messages" onClick={() => go("/messages")} />
             <MenuItem icon={<CalendarDays className="h-4 w-4" />} label="Events" onClick={() => go("/events")} />
+
+            {/* Optional routes: only keep if you added these in App.tsx */}
+            <MenuItem icon={<Search className="h-4 w-4" />} label="Search" onClick={() => go("/search")} />
+            <MenuItem icon={<Bell className="h-4 w-4" />} label="Notifications" onClick={() => go("/notifications")} />
+
+            {/* Optional: only keep if you have this route/page */}
+            <MenuItem icon={<MapPin className="h-4 w-4" />} label="Change community" onClick={() => go("/change-community")} />
           </div>
 
           <Separator />

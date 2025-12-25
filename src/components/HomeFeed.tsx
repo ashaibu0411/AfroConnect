@@ -239,20 +239,36 @@ export default function HomeFeed({ onRequireLogin, onGoToWelcome }: Props) {
             </div>
 
             <div className="flex gap-2">
-              <Button className="rounded-xl" variant={tab === "local" ? "default" : "outline"} onClick={() => setTab("local")}>
+              <Button
+                className="rounded-xl"
+                variant={tab === "local" ? "default" : "outline"}
+                onClick={() => setTab("local")}
+              >
                 Local
               </Button>
-              <Button className="rounded-xl" variant={tab === "global" ? "default" : "outline"} onClick={() => setTab("global")}>
+              <Button
+                className="rounded-xl"
+                variant={tab === "global" ? "default" : "outline"}
+                onClick={() => setTab("global")}
+              >
                 Global
               </Button>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 mt-4">
-            <Button className="rounded-xl" variant={density === "comfortable" ? "default" : "outline"} onClick={() => setDensity("comfortable")}>
+            <Button
+              className="rounded-xl"
+              variant={density === "comfortable" ? "default" : "outline"}
+              onClick={() => setDensity("comfortable")}
+            >
               Comfortable
             </Button>
-            <Button className="rounded-xl" variant={density === "compact" ? "default" : "outline"} onClick={() => setDensity("compact")}>
+            <Button
+              className="rounded-xl"
+              variant={density === "compact" ? "default" : "outline"}
+              onClick={() => setDensity("compact")}
+            >
               Compact
             </Button>
           </div>
@@ -271,12 +287,18 @@ export default function HomeFeed({ onRequireLogin, onGoToWelcome }: Props) {
           {filtered.length === 0 ? (
             <div className="py-12 text-center">
               <div className="text-lg font-semibold">No posts found</div>
-              <div className="text-sm text-muted-foreground mt-1">Try another search, or switch to Global.</div>
-              <div className="mt-4">
-                <Button className="rounded-xl" onClick={requestLogin}>
-                  Login to Post
-                </Button>
+              <div className="text-sm text-muted-foreground mt-1">
+                Try another search, or switch to Global.
               </div>
+
+              {/* ✅ Only show if not logged in */}
+              {!isLoggedIn ? (
+                <div className="mt-4">
+                  <Button className="rounded-xl" onClick={requestLogin}>
+                    Login to Post
+                  </Button>
+                </div>
+              ) : null}
             </div>
           ) : (
             filtered.map((p) => (
@@ -292,10 +314,14 @@ export default function HomeFeed({ onRequireLogin, onGoToWelcome }: Props) {
                       </div>
                     ) : null}
                   </div>
-                  <div className="text-xs text-muted-foreground">{new Date(p.createdAt).toLocaleString()}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {new Date(p.createdAt).toLocaleString()}
+                  </div>
                 </div>
 
-                <div className={`mt-3 ${density === "compact" ? "text-sm" : "text-base"}`}>{p.content}</div>
+                <div className={`mt-3 ${density === "compact" ? "text-sm" : "text-base"}`}>
+                  {p.content}
+                </div>
 
                 {p.media?.length ? (
                   <div className="mt-3 grid grid-cols-2 gap-2">
@@ -303,7 +329,12 @@ export default function HomeFeed({ onRequireLogin, onGoToWelcome }: Props) {
                       .filter((m) => m.kind === "image")
                       .slice(0, 4)
                       .map((m, idx) => (
-                        <img key={`${p.id}-${idx}`} src={m.url} alt={m.name} className="rounded-xl border h-40 w-full object-cover" />
+                        <img
+                          key={`${p.id}-${idx}`}
+                          src={m.url}
+                          alt={m.name}
+                          className="rounded-xl border h-40 w-full object-cover"
+                        />
                       ))}
                   </div>
                 ) : null}

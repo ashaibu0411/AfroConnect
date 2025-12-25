@@ -11,22 +11,20 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { CalendarDays, Image as ImageIcon, Plus, Pencil, MapPin } from "lucide-react";
 import { toast } from "sonner";
 
-type Props = {
-  communityLabel: string; // e.g. "Aurora, CO" or "Accra, Ghana · Osu"
-};
+type Props = { communityLabel?: string };
 
 type ProfileData = {
   displayName: string;
   bio: string;
-  interests: string; // comma-separated for now
-  avatarUrl?: string; // stored as data URL
+  interests: string;
+  avatarUrl?: string;
 };
 
 type LocalEvent = {
   id: string;
   title: string;
-  date: string; // YYYY-MM-DD
-  time?: string; // HH:mm
+  date: string;
+  time?: string;
   location?: string;
   visibility: "public" | "private";
   description?: string;
@@ -36,7 +34,6 @@ const LS_PROFILE = "afroconnect.profile";
 const LS_AVATAR_URL = "afroconnect.avatarUrl";
 const LS_EVENTS = "afroconnect.events";
 
-// Must match App.tsx listener
 const PROFILE_UPDATED_EVENT = "afroconnect.profileUpdated";
 
 function initials(name: string) {
@@ -76,9 +73,7 @@ function readProfile(): ProfileData {
 function saveProfile(p: ProfileData) {
   localStorage.setItem(LS_PROFILE, JSON.stringify(p));
   if (p.avatarUrl) localStorage.setItem(LS_AVATAR_URL, p.avatarUrl);
-
-  // ✅ notify AppHeader immediately
-  window.dispatchEvent(new Event("afroconnect.profileUpdated"));
+  window.dispatchEvent(new Event(PROFILE_UPDATED_EVENT));
 }
 
 function readEvents(): LocalEvent[] {
@@ -90,10 +85,11 @@ function saveEvents(events: LocalEvent[]) {
 }
 
 export default function ProfilePage({ communityLabel }: Props) {
+  const label = communityLabel || "Your community";
+
   const [profile, setProfile] = useState<ProfileData>(() => readProfile());
   const [editing, setEditing] = useState(false);
 
-  // Events
   const [events, setEvents] = useState<LocalEvent[]>(() => readEvents());
   const [showCreateEvent, setShowCreateEvent] = useState(false);
 
@@ -102,19 +98,17 @@ export default function ProfilePage({ communityLabel }: Props) {
     title: "",
     date: "",
     time: "",
-    location: communityLabel,
+    location: label,
     visibility: "public",
     description: "",
   }));
 
   useEffect(() => {
-    // Keep avatar in sync if user updated elsewhere
     const avatarUrl = localStorage.getItem(LS_AVATAR_URL) || undefined;
     setProfile((p) => ({ ...p, avatarUrl }));
   }, []);
 
   const profileProgress = useMemo(() => {
-    // Simple “progress” score like Nextdoor
     let score = 0;
     if (profile.displayName && profile.displayName !== "Guest") score += 1;
     if (profile.avatarUrl) score += 1;
@@ -145,20 +139,14 @@ export default function ProfilePage({ communityLabel }: Props) {
   const onPickAvatar = async (file: File | null) => {
     if (!file) return;
 
-    // Convert to data URL so it persists in localStorage
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = String(reader.result || "");
       localStorage.setItem(LS_AVATAR_URL, dataUrl);
 
-      // Also keep profile JSON in sync (so App.tsx can read it from profile too)
       const nextProfile: ProfileData = { ...profile, avatarUrl: dataUrl };
       saveProfile(nextProfile);
-
       setProfile(nextProfile);
-
-      // Tell AppHeader/App.tsx to refresh immediately
-      window.dispatchEvent(new Event(PROFILE_UPDATED_EVENT));
 
       toast.success("Profile photo updated.");
     };
@@ -178,9 +166,6 @@ export default function ProfilePage({ communityLabel }: Props) {
     setProfile(clean);
     setEditing(false);
 
-    // Tell AppHeader/App.tsx to refresh immediately
-    window.dispatchEvent(new Event(PROFILE_UPDATED_EVENT));
-
     toast.success("Profile saved.");
   };
 
@@ -194,7 +179,7 @@ export default function ProfilePage({ communityLabel }: Props) {
       ...newEvent,
       id: crypto?.randomUUID?.() ?? String(Date.now()),
       title: newEvent.title.trim(),
-      location: newEvent.location?.trim() || communityLabel,
+      location: newEvent.location?.trim() || label,
       description: newEvent.description?.trim() || "",
     };
 
@@ -208,7 +193,7 @@ export default function ProfilePage({ communityLabel }: Props) {
       title: "",
       date: "",
       time: "",
-      location: communityLabel,
+      location: label,
       visibility: "public",
       description: "",
     });
@@ -219,16 +204,13 @@ export default function ProfilePage({ communityLabel }: Props) {
   return (
     <div className="min-h-screen bg-muted/30">
       <div className="container max-w-4xl py-6 space-y-6">
-        {/* TOP PROFILE CARD */}
         <Card className="border">
           <CardContent className="p-6">
             <div className="flex items-start gap-5">
               <div className="relative">
                 <Avatar className="h-20 w-20">
                   {profile.avatarUrl ? <AvatarImage src={profile.avatarUrl} /> : null}
-                  <AvatarFallback className="text-lg">
-                    {initials(profile.displayName)}
-                  </AvatarFallback>
+                  <AvatarFallback className="text-lg">{initials(profile.displayName)}</AvatarFallback>
                 </Avatar>
 
                 <label className="mt-3 inline-flex items-center gap-2 text-xs cursor-pointer select-none">
@@ -251,7 +233,7 @@ export default function ProfilePage({ communityLabel }: Props) {
                     <h1 className="text-2xl font-bold truncate">{profile.displayName}</h1>
                     <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
                       <MapPin className="h-4 w-4" />
-                      <span className="truncate">{communityLabel}</span>
+                      <span className="truncate">{label}</span>
                     </div>
                   </div>
 
@@ -261,10 +243,7 @@ export default function ProfilePage({ communityLabel }: Props) {
                       {editing ? "Cancel" : "Edit profile"}
                     </Button>
 
-                    <Button
-                      variant="outline"
-                      onClick={() => toast.info("Business pages: next step.")}
-                    >
+                    <Button variant="outline" onClick={() => toast.info("Business pages: next step.")}>
                       Add business page
                     </Button>
                   </div>
@@ -272,7 +251,6 @@ export default function ProfilePage({ communityLabel }: Props) {
 
                 <Separator className="my-4" />
 
-                {/* Profile progress */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-medium">Profile Progress</span>
@@ -286,11 +264,7 @@ export default function ProfilePage({ communityLabel }: Props) {
                     <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
                       Add your interests
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => toast.info("Already available: upload photo button.")}
-                    >
+                    <Button variant="outline" size="sm" onClick={() => toast.info("Already available: upload photo button.")}>
                       Upload a profile photo
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
@@ -299,16 +273,13 @@ export default function ProfilePage({ communityLabel }: Props) {
                   </div>
                 </div>
 
-                {/* Edit form */}
                 {editing ? (
                   <div className="mt-5 grid gap-4">
                     <div className="grid gap-2">
                       <label className="text-sm font-medium">Display name</label>
                       <Input
                         value={profile.displayName}
-                        onChange={(e) =>
-                          setProfile((p) => ({ ...p, displayName: e.target.value }))
-                        }
+                        onChange={(e) => setProfile((p) => ({ ...p, displayName: e.target.value }))}
                         placeholder="Your name"
                       />
                     </div>
@@ -326,9 +297,7 @@ export default function ProfilePage({ communityLabel }: Props) {
                       <label className="text-sm font-medium">Interests (comma-separated)</label>
                       <Input
                         value={profile.interests}
-                        onChange={(e) =>
-                          setProfile((p) => ({ ...p, interests: e.target.value }))
-                        }
+                        onChange={(e) => setProfile((p) => ({ ...p, interests: e.target.value }))}
                         placeholder="e.g. Jobs, Housing, Church, Soccer, Networking"
                       />
                     </div>
@@ -346,7 +315,6 @@ export default function ProfilePage({ communityLabel }: Props) {
           </CardContent>
         </Card>
 
-        {/* DASHBOARD TABS */}
         <Card className="border">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Dashboard</CardTitle>
@@ -360,7 +328,6 @@ export default function ProfilePage({ communityLabel }: Props) {
                 <TabsTrigger value="about">About</TabsTrigger>
               </TabsList>
 
-              {/* POSTS */}
               <TabsContent value="posts" className="mt-4">
                 <ScrollArea className="h-[420px] pr-3">
                   <div className="space-y-4">
@@ -376,16 +343,12 @@ export default function ProfilePage({ communityLabel }: Props) {
                               <div>
                                 <p className="text-sm font-semibold">{profile.displayName}</p>
                                 <p className="text-xs text-muted-foreground">
-                                  {communityLabel} · {p.timeAgo}
+                                  {label} · {p.timeAgo}
                                 </p>
                               </div>
                             </div>
 
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => toast.info("Post actions: next step.")}
-                            >
+                            <Button variant="ghost" size="sm" onClick={() => toast.info("Post actions: next step.")}>
                               •••
                             </Button>
                           </div>
@@ -393,23 +356,15 @@ export default function ProfilePage({ communityLabel }: Props) {
                           <p className="text-sm">{p.content}</p>
 
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                            <span>♥ {p.stats.likes}</span>
+                            <span>♥️ {p.stats.likes}</span>
                             <span>💬 {p.stats.comments}</span>
                           </div>
 
                           <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => toast.info("Like: wire to backend.")}
-                            >
+                            <Button variant="outline" size="sm" onClick={() => toast.info("Like: wire to backend.")}>
                               Like
                             </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => toast.info("Comment: wire to backend.")}
-                            >
+                            <Button variant="outline" size="sm" onClick={() => toast.info("Comment: wire to backend.")}>
                               Comment
                             </Button>
                           </div>
@@ -420,7 +375,6 @@ export default function ProfilePage({ communityLabel }: Props) {
                 </ScrollArea>
               </TabsContent>
 
-              {/* EVENTS */}
               <TabsContent value="events" className="mt-4">
                 <div className="flex items-center justify-between gap-3 mb-4">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -470,7 +424,7 @@ export default function ProfilePage({ communityLabel }: Props) {
                         <Input
                           value={newEvent.location || ""}
                           onChange={(e) => setNewEvent((ev) => ({ ...ev, location: e.target.value }))}
-                          placeholder={communityLabel}
+                          placeholder={label}
                         />
                       </div>
 
@@ -525,17 +479,11 @@ export default function ProfilePage({ communityLabel }: Props) {
                               <p className="text-sm font-semibold">{ev.title}</p>
                               <p className="text-xs text-muted-foreground">
                                 {ev.date}
-                                {ev.time ? ` · ${ev.time}` : ""} · {ev.location || communityLabel}
+                                {ev.time ? ` · ${ev.time}` : ""} · {ev.location || label}
                               </p>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Visibility: {ev.visibility}
-                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">Visibility: {ev.visibility}</p>
                             </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => toast.info("Event details page: next step.")}
-                            >
+                            <Button variant="outline" size="sm" onClick={() => toast.info("Event details page: next step.")}>
                               View
                             </Button>
                           </div>
@@ -548,7 +496,6 @@ export default function ProfilePage({ communityLabel }: Props) {
                 </div>
               </TabsContent>
 
-              {/* ABOUT */}
               <TabsContent value="about" className="mt-4">
                 <div className="space-y-2">
                   <p className="text-sm">
@@ -565,9 +512,8 @@ export default function ProfilePage({ communityLabel }: Props) {
           </CardContent>
         </Card>
 
-        {/* Footer */}
         <div className="text-center text-xs text-muted-foreground py-8">
-          © {new Date().getFullYear()} AfroConnect. Built with ❤️ for the African diaspora.
+          ©️ {new Date().getFullYear()} AfroConnect. Built with ❤️ for the African diaspora.
         </div>
       </div>
     </div>

@@ -22,7 +22,13 @@ function toE164(raw: string) {
   return digits;
 }
 
-export default function AuthSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+export default function AuthSheet({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
   const {
     signInWithEmail,
     signUpWithEmail,
@@ -36,8 +42,8 @@ export default function AuthSheet({ open, onOpenChange }: { open: boolean; onOpe
   const [mode, setMode] = useState<Mode>("signin");
   const [method, setMethod] = useState<Method>("email");
 
-  // ✅ Signup fields
-  const [handle, setHandle] = useState("");      // community name / username
+  // NEW: profile fields for signup
+  const [displayName, setDisplayName] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
 
@@ -62,9 +68,9 @@ export default function AuthSheet({ open, onOpenChange }: { open: boolean; onOpe
     setShowPass(false);
   }, [open]);
 
-  function switchMode(next: Mode) {
-    setMode(next);
+  function softResetAuthFields() {
     setErrorMsg(null);
+    setPassword("");
     setOtp("");
     setOtpSent(false);
   }
@@ -76,8 +82,15 @@ export default function AuthSheet({ open, onOpenChange }: { open: boolean; onOpe
     setOtpSent(false);
   }
 
-  function validateSignupFields() {
-    if (!handle.trim()) return "Community name is required.";
+  function switchMode(next: Mode) {
+    setMode(next);
+    setErrorMsg(null);
+    setOtp("");
+    setOtpSent(false);
+  }
+
+  function requireSignupNames() {
+    if (!displayName.trim()) return "Display name is required.";
     if (!firstName.trim()) return "First name is required.";
     if (!lastName.trim()) return "Last name is required.";
     return null;
@@ -87,10 +100,11 @@ export default function AuthSheet({ open, onOpenChange }: { open: boolean; onOpe
     setErrorMsg(null);
     try {
       await signInWithGoogle();
-      toast.success("Logged in.");
-      onOpenChange(false);
+      // OAuth redirects; this toast may not show in all flows, but it’s fine.
+      toast.success("Continuing with Google...");
     } catch (e: any) {
-      setErrorMsg(e?.message ?? "Google sign-in failed.");
+      const msg = e?.message ?? "Google sign-in failed.";
+      setErrorMsg(msg);
       toast.error("Google sign-in failed.");
     }
   }
@@ -103,38 +117,46 @@ export default function AuthSheet({ open, onOpenChange }: { open: boolean; onOpe
     if (!password) return setErrorMsg("Password is required.");
 
     if (mode === "signup") {
-      const v = validateSignupFields();
-      if (v) return setErrorMsg(v);
+      const err = requireSignupNames();
+      if (err) return setErrorMsg(err);
     }
 
     try {
       if (mode === "signin") {
         await signInWithEmail(e, password);
         toast.success("Logged in.");
-        onOpenChange(false);
-        return;
+      } else {
+        const session = await signUpWithEmail(e, password);
+
+        // If email confirmation is ON, session may be null (user must confirm email).
+        if (!session?.user) {
+          toast.success("Account created. Please check your email to confirm, then log in.");
+          onOpenChange(false);
+          softResetAuthFields();
+          return;
+        }
+
+        await upsertMyProfile({
+          displayName: displayName.trim(),
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+        });
+
+        toast.success("Account created.");
       }
 
-      // ✅ SIGN UP
-      await signUpWithEmail(e, password);
-
-      // ✅ Create profile with onboarding incomplete (we’ll send them to onboarding next)
-      await upsertMyProfile({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        handle: handle.trim(),
-        onboardingComplete: false,
-      });
-
-      window.dispatchEvent(new Event("afroconnect.onboardingNeeded"));
-      toast.success("Account created.");
       onOpenChange(false);
+      softResetAuthFields();
     } catch (err: any) {
       const msg = String(err?.message ?? "Auth failed.");
-      if (msg.toLowerCase().includes("invalid login credentials")) setErrorMsg("Wrong email or password.");
-      else if (msg.toLowerCase().includes("already registered")) setErrorMsg("This email is already in use. Try logging in.");
-      else if (msg.toLowerCase().includes("duplicate") && msg.toLowerCase().includes("handle")) setErrorMsg("That community name is taken. Try another.");
-      else setErrorMsg(msg);
+
+      if (msg.toLowerCase().includes("invalid login credentials")) {
+        setErrorMsg("Wrong email or password.");
+      } else if (msg.toLowerCase().includes("already registered")) {
+        setErrorMsg("This email is already in use. Try logging in.");
+      } else {
+        setErrorMsg(msg);
+      }
     }
   }
 
@@ -142,8 +164,8 @@ export default function AuthSheet({ open, onOpenChange }: { open: boolean; onOpe
     setErrorMsg(null);
 
     if (mode === "signup") {
-      const v = validateSignupFields();
-      if (v) return setErrorMsg(v);
+      const err = requireSignupNames();
+      if (err) return setErrorMsg(err);
     }
 
     const p = toE164(phone);
@@ -163,6 +185,7 @@ export default function AuthSheet({ open, onOpenChange }: { open: boolean; onOpe
 
     const p = toE164(phone);
     const t = otp.trim();
+
     if (!p) return setErrorMsg("Phone number is required.");
     if (!t) return setErrorMsg("OTP is required.");
 
@@ -171,23 +194,27 @@ export default function AuthSheet({ open, onOpenChange }: { open: boolean; onOpe
 
       if (mode === "signup") {
         await upsertMyProfile({
+          displayName: displayName.trim(),
           firstName: firstName.trim(),
           lastName: lastName.trim(),
-          handle: handle.trim(),
-          onboardingComplete: false,
         });
-
-        window.dispatchEvent(new Event("afroconnect.onboardingNeeded"));
         toast.success("Account created.");
       } else {
         toast.success("Logged in.");
       }
 
       onOpenChange(false);
+      softResetAuthFields();
     } catch (e: any) {
       setErrorMsg(e?.message ?? "OTP verification failed.");
     }
   }
+
+  const primaryDisabled =
+    isBusy ||
+    (method === "email"
+      ? !email.trim() || !password
+      : !toE164(phone) || (otpSent ? !otp.trim() : false));
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -202,26 +229,37 @@ export default function AuthSheet({ open, onOpenChange }: { open: boolean; onOpe
           </Button>
 
           <div className="grid grid-cols-2 gap-2">
-            <Button type="button" variant={method === "email" ? "default" : "outline"} onClick={() => switchMethod("email")} disabled={isBusy}>
+            <Button
+              type="button"
+              variant={method === "email" ? "default" : "outline"}
+              onClick={() => switchMethod("email")}
+              disabled={isBusy}
+            >
               Continue with email
             </Button>
 
-            <Button type="button" variant={method === "phone" ? "default" : "outline"} onClick={() => switchMethod("phone")} disabled={isBusy}>
+            <Button
+              type="button"
+              variant={method === "phone" ? "default" : "outline"}
+              onClick={() => switchMethod("phone")}
+              disabled={isBusy}
+            >
               <Phone className="h-4 w-4 mr-2" />
               Continue with phone
             </Button>
           </div>
 
-          {/* ✅ SIGNUP fields for BOTH email & phone */}
+          {/* Signup identity fields */}
           {mode === "signup" ? (
             <div className="space-y-2">
-              <Input value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="Community name (what people see)" />
+              <Input
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Display name (what your community sees)"
+              />
               <div className="grid grid-cols-2 gap-2">
                 <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name" />
                 <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" />
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Your community name is what people will see on posts. You can change it later in Profile.
               </div>
             </div>
           ) : null}
@@ -229,7 +267,13 @@ export default function AuthSheet({ open, onOpenChange }: { open: boolean; onOpe
           {method === "email" ? (
             <>
               <div className="space-y-2">
-                <Input value={email} onChange={(ev) => setEmail(ev.target.value)} placeholder="Email" inputMode="email" autoComplete="email" />
+                <Input
+                  value={email}
+                  onChange={(ev) => setEmail(ev.target.value)}
+                  placeholder="Email"
+                  inputMode="email"
+                  autoComplete="email"
+                />
 
                 <div className="relative">
                   <Input
@@ -252,14 +296,20 @@ export default function AuthSheet({ open, onOpenChange }: { open: boolean; onOpe
                 {errorMsg ? <div className="text-sm text-red-600">{errorMsg}</div> : null}
               </div>
 
-              <Button className="w-full" onClick={onEmailSubmit} disabled={isBusy}>
+              <Button className="w-full" onClick={onEmailSubmit} disabled={primaryDisabled}>
                 {mode === "signin" ? "Log in" : "Create account"}
               </Button>
             </>
           ) : (
             <>
               <div className="space-y-2">
-                <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone (e.g. +233...)" inputMode="tel" autoComplete="tel" />
+                <Input
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="Phone (e.g. +233501234567 or 7205551234)"
+                  inputMode="tel"
+                  autoComplete="tel"
+                />
 
                 {otpSent ? (
                   <Input value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="Enter OTP code" inputMode="numeric" />
@@ -269,7 +319,7 @@ export default function AuthSheet({ open, onOpenChange }: { open: boolean; onOpe
               </div>
 
               {!otpSent ? (
-                <Button className="w-full" onClick={onSendOtp} disabled={isBusy}>
+                <Button className="w-full" onClick={onSendOtp} disabled={primaryDisabled}>
                   Send OTP
                 </Button>
               ) : (
@@ -277,11 +327,15 @@ export default function AuthSheet({ open, onOpenChange }: { open: boolean; onOpe
                   <Button variant="outline" onClick={onSendOtp} disabled={isBusy}>
                     Resend
                   </Button>
-                  <Button onClick={onVerifyOtp} disabled={isBusy}>
+                  <Button onClick={onVerifyOtp} disabled={primaryDisabled}>
                     Verify
                   </Button>
                 </div>
               )}
+
+              <div className="text-xs text-muted-foreground">
+                Phone OTP requires Supabase Phone Auth enabled and an SMS provider configured.
+              </div>
             </>
           )}
 
@@ -289,14 +343,24 @@ export default function AuthSheet({ open, onOpenChange }: { open: boolean; onOpe
             {mode === "signin" ? (
               <>
                 Don’t have an account?{" "}
-                <button type="button" className="text-primary underline underline-offset-4" onClick={() => switchMode("signup")} disabled={isBusy}>
+                <button
+                  type="button"
+                  className="text-primary underline underline-offset-4"
+                  onClick={() => switchMode("signup")}
+                  disabled={isBusy}
+                >
                   Create one
                 </button>
               </>
             ) : (
               <>
                 Already have an account?{" "}
-                <button type="button" className="text-primary underline underline-offset-4" onClick={() => switchMode("signin")} disabled={isBusy}>
+                <button
+                  type="button"
+                  className="text-primary underline underline-offset-4"
+                  onClick={() => switchMode("signin")}
+                  disabled={isBusy}
+                >
                   Log in
                 </button>
               </>
